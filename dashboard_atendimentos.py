@@ -235,7 +235,7 @@ with aba_registros:
 
     evento = st.dataframe(
         df_exib,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         on_select="rerun",
         selection_mode="single-row",
@@ -264,7 +264,7 @@ with aba_registros:
                                       col_quantia, col_login, col_categoria]
                          if v in registros_cpf.columns]
             st.dataframe(registros_cpf[cols_hist].reset_index(drop=True),
-                         use_container_width=True, hide_index=True)
+                         width='stretch', hide_index=True)
 
             if col_servico in registros_cpf.columns:
                 svc_count = registros_cpf[col_servico].astype(str).value_counts().reset_index()
@@ -275,7 +275,7 @@ with aba_registros:
                 fig.update_layout(showlegend=False, coloraxis_showscale=False,
                                   yaxis_title=None, xaxis_title="Quantidade")
                 fig.update_traces(textposition="outside")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
 
 # ─────────────────────────────────────
 # ABA 2 — GRÁFICOS
@@ -295,7 +295,7 @@ with aba_graficos:
                               color="Qtd", color_continuous_scale="Teal", text="Qtd")
                 fig1.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                 fig1.update_traces(textposition="outside")
-                st.plotly_chart(fig1, use_container_width=True)
+                st.plotly_chart(fig1, width='stretch')
 
         with g2:
             if col_unidade in df_f.columns:
@@ -306,7 +306,7 @@ with aba_graficos:
                               color="Qtd", color_continuous_scale="Purples", text="Qtd")
                 fig2.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                 fig2.update_traces(textposition="outside")
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width='stretch')
 
         g3, g4 = st.columns(2)
 
@@ -319,7 +319,7 @@ with aba_graficos:
                               color="Qtd", color_continuous_scale="Oranges", text="Qtd")
                 fig3.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                 fig3.update_traces(textposition="outside")
-                st.plotly_chart(fig3, use_container_width=True)
+                st.plotly_chart(fig3, width='stretch')
 
         with g4:
             if col_data in df_f.columns:
@@ -331,7 +331,7 @@ with aba_graficos:
                                title="Evolução dos atendimentos ao longo do tempo",
                                markers=True)
                 fig4.update_layout(xaxis_title="Mês", yaxis_title="Atendimentos")
-                st.plotly_chart(fig4, use_container_width=True)
+                st.plotly_chart(fig4, width='stretch')
 
         if col_unidade in df_f.columns and col_servico in df_f.columns:
             st.markdown("##### Mapa de calor — Serviços por unidade")
@@ -343,7 +343,7 @@ with aba_graficos:
             fig5 = px.imshow(heat_pivot, text_auto=True, color_continuous_scale="Blues",
                              title="Quantidade de atendimentos por unidade e tipo de serviço")
             fig5.update_layout(xaxis_title="Serviço", yaxis_title="Unidade")
-            st.plotly_chart(fig5, use_container_width=True)
+            st.plotly_chart(fig5, width='stretch')
 
 # ─────────────────────────────────────
 # ABA 3 — ATENDENTES
@@ -376,7 +376,7 @@ with aba_atendentes:
                                     color_continuous_scale="Teal", text="Qtd")
                     fig_a1.update_layout(coloraxis_showscale=False, yaxis_title=None)
                     fig_a1.update_traces(textposition="outside")
-                    st.plotly_chart(fig_a1, use_container_width=True)
+                    st.plotly_chart(fig_a1, width='stretch')
 
             with col_dir:
                 if col_unidade in df_at.columns:
@@ -384,13 +384,13 @@ with aba_atendentes:
                     uni_at.columns = ["Unidade", "Qtd"]
                     fig_a2 = px.pie(uni_at, names="Unidade", values="Qtd",
                                     title="Distribuição por unidade")
-                    st.plotly_chart(fig_a2, use_container_width=True)
+                    st.plotly_chart(fig_a2, width='stretch')
 
             st.markdown("##### Cidadãos atendidos")
             cols_at = [v for v in [col_nome, col_cpf, col_servico, col_data, col_unidade]
                        if v in df_at.columns]
             st.dataframe(df_at[cols_at].reset_index(drop=True),
-                         use_container_width=True, hide_index=True)
+                         width='stretch', hide_index=True)
 
 # ─────────────────────────────────────
 # ABA 4 — EXPORTAR
