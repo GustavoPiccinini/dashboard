@@ -1,10 +1,11 @@
 import io
+import gc
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 
 # ══════════════════════════════════════════════
-# CONFIGURAÇÃO DA PÁGINA — deve ser o primeiro comando
+# CONFIGURAÇÃO DA PÁGINA
 # ══════════════════════════════════════════════
 st.set_page_config(
     page_title="Dashboard de Atendimentos",
@@ -22,11 +23,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════
-# AUTENTICAÇÃO COM SENHA SEGURA
-# Localmente (sem Streamlit Cloud): usa a senha definida abaixo em SENHA_LOCAL
-# No Streamlit Cloud: usa st.secrets["SENHA_DASHBOARD"]
+# AUTENTICAÇÃO
 # ══════════════════════════════════════════════
-SENHA_LOCAL = "assistencia"  # usada só no seu computador local
+SENHA_LOCAL = "assistencia"
 
 try:
     senha_correta = st.secrets["SENHA_DASHBOARD"]
@@ -45,7 +44,7 @@ if senha_digitada != senha_correta:
 st.sidebar.success("✅ Acesso liberado!")
 
 # ══════════════════════════════════════════════
-# MAPEAMENTO DE COLUNAS — ajuste se necessário
+# MAPEAMENTO DE COLUNAS
 # ══════════════════════════════════════════════
 COL_MAP = {
     "codigo":     "Codigo_do_grupo",
@@ -62,31 +61,48 @@ COL_MAP = {
 }
 
 # ══════════════════════════════════════════════
-# CARREGAMENTO
+# CARREGAMENTO OTIMIZADO
+# Usa ttl para liberar cache após 1 hora
+# Converte colunas de texto para 'category' (usa até 10x menos memória)
 # ══════════════════════════════════════════════
-@st.cache_data
+@st.cache_data(ttl=3600, max_entries=1)
 def load_data(raw_bytes, filename):
     if filename.endswith(".csv"):
+        df = None
         for enc in ["utf-8", "latin-1", "cp1252", "iso-8859-1"]:
             try:
-                return pd.read_csv(io.BytesIO(raw_bytes), encoding=enc, sep=None, engine="python")
+                df = pd.read_csv(io.BytesIO(raw_bytes), encoding=enc, sep=None, engine="python")
+                break
             except (UnicodeDecodeError, Exception):
                 continue
-        raise ValueError("Não foi possível detectar o encoding do CSV.")
+        if df is None:
+            raise ValueError("Não foi possível detectar o encoding do CSV.")
     else:
-        return pd.read_excel(io.BytesIO(raw_bytes))
+        df = pd.read_excel(io.BytesIO(raw_bytes))
 
-@st.cache_data
+    # Otimizar memória: converte colunas de texto repetitivo para category
+    colunas_categoricas = [
+        "SERVICO", "UNIDADE_DE_ATENDIMENTO", "login", "Categoria", "Nome_referencia"
+    ]
+    for col in colunas_categoricas:
+        if col in df.columns:
+            df[col] = df[col].astype("category")
+
+    # Converte data
+    if "DATA" in df.columns:
+        df["DATA"] = pd.to_datetime(df["DATA"], dayfirst=True, errors="coerce")
+
+    # Libera memória explicitamente
+    gc.collect()
+    return df
+
+@st.cache_data(ttl=3600, max_entries=1)
 def load_sample():
     return pd.DataFrame([
         {"Codigo_do_grupo": 144991, "CPF": "000.000.029-46", "NIS": "NULL",        "DATA_DE_NASCIMENTO": "02/03/1980", "Nome_referencia": "Maria de Fatima Cardoso",  "DATA": "28/11/2025 00:00", "SERVICO": "CADASTRO ÚNICO - FOLHA RESUMO",    "QUANTIA": 1, "UNIDADE_DE_ATENDIMENTO": "Cras - Aeroporto",    "login": "Sara Morais Alcântara",  "Categoria": "Procedimento"},
         {"Codigo_do_grupo": 93199,  "CPF": "021.765.619-61", "NIS": "12589385538", "DATA_DE_NASCIMENTO": "09/09/1976", "Nome_referencia": "Mariana Ferreira Krempel", "DATA": "27/11/2025 17:00", "SERVICO": "ATIVIDADE EM GRUPO",               "QUANTIA": 1, "UNIDADE_DE_ATENDIMENTO": "Centro da Juventude", "login": "Josimar Gabriel da Paz", "Categoria": "Procedimento"},
         {"Codigo_do_grupo": 93200,  "CPF": "007.466.329-03", "NIS": "20358812647", "DATA_DE_NASCIMENTO": "04/12/1979", "Nome_referencia": "Luziele Aparecida Santos", "DATA": "27/11/2025 17:00", "SERVICO": "ATIVIDADE EM GRUPO",               "QUANTIA": 1, "UNIDADE_DE_ATENDIMENTO": "Centro da Juventude", "login": "Josimar Gabriel da Paz", "Categoria": "Procedimento"},
         {"Codigo_do_grupo": 93201,  "CPF": "005.650.619-28", "NIS": "12642302584", "DATA_DE_NASCIMENTO": "29/01/1978", "Nome_referencia": "Vani Silva Souza",         "DATA": "27/11/2025 17:00", "SERVICO": "ATIVIDADE EM GRUPO",               "QUANTIA": 1, "UNIDADE_DE_ATENDIMENTO": "Centro da Juventude", "login": "Josimar Gabriel da Paz", "Categoria": "Procedimento"},
-        {"Codigo_do_grupo": 93202,  "CPF": "012.344.519-77", "NIS": "11234560011", "DATA_DE_NASCIMENTO": "15/06/1985", "Nome_referencia": "Roberto Carlos Melo",       "DATA": "26/11/2025 09:00", "SERVICO": "VISITA DOMICILIAR",                "QUANTIA": 1, "UNIDADE_DE_ATENDIMENTO": "Cras - Aeroporto",    "login": "Sara Morais Alcântara",  "Categoria": "Procedimento"},
-        {"Codigo_do_grupo": 93203,  "CPF": "033.221.489-90", "NIS": "99887760022", "DATA_DE_NASCIMENTO": "22/11/1990", "Nome_referencia": "Patricia Souza Lima",       "DATA": "26/11/2025 10:30", "SERVICO": "ATENDIMENTO INDIVIDUALIZADO",      "QUANTIA": 1, "UNIDADE_DE_ATENDIMENTO": "CREAS Central",       "login": "Ana Paula Ramos",        "Categoria": "Procedimento"},
-        {"Codigo_do_grupo": 93204,  "CPF": "041.887.229-14", "NIS": "88776655443", "DATA_DE_NASCIMENTO": "03/04/1972", "Nome_referencia": "Edson Ferreira da Costa",   "DATA": "25/11/2025 14:00", "SERVICO": "CADASTRO ÚNICO - INCLUSÃO",        "QUANTIA": 1, "UNIDADE_DE_ATENDIMENTO": "Cras - Aeroporto",    "login": "Sara Morais Alcântara",  "Categoria": "Procedimento"},
-        {"Codigo_do_grupo": 93205,  "CPF": "057.112.339-08", "NIS": "77665544332", "DATA_DE_NASCIMENTO": "18/08/1968", "Nome_referencia": "Gleice Aparecida Nunes",    "DATA": "25/11/2025 15:30", "SERVICO": "ATIVIDADE EM GRUPO",               "QUANTIA": 1, "UNIDADE_DE_ATENDIMENTO": "Centro da Juventude", "login": "Josimar Gabriel da Paz", "Categoria": "Procedimento"},
     ])
 
 # ══════════════════════════════════════════════
@@ -107,6 +123,8 @@ if uploaded_file:
         raw = uploaded_file.read()
         df = load_data(raw, uploaded_file.name)
         st.sidebar.success(f"✅ {len(df):,} registros carregados!")
+        del raw  # libera memória do arquivo bruto
+        gc.collect()
     except Exception as e:
         st.sidebar.error(f"Erro ao carregar: {e}")
         df = load_sample()
@@ -132,15 +150,15 @@ col_nasc      = C.get("nascimento", "DATA_DE_NASCIMENTO")
 col_codigo    = C.get("codigo",     "Codigo_do_grupo")
 col_quantia   = C.get("quantia",    "QUANTIA")
 
-# Converter data
-if col_data in df.columns:
-    df[col_data] = pd.to_datetime(df[col_data], dayfirst=True, errors="coerce")
-
 st.sidebar.markdown("### 🔍 Filtros")
 search = st.sidebar.text_input("Buscar por nome ou CPF", placeholder="Digite aqui...")
 
 def opts(col, label_all):
-    return [label_all] + sorted(df[col].dropna().unique().tolist()) if col in df.columns else [label_all]
+    if col not in df.columns:
+        return [label_all]
+    valores = df[col].unique().tolist()
+    valores = [str(v) for v in valores if pd.notna(v)]
+    return [label_all] + sorted(valores)
 
 filtro_unidade   = st.sidebar.selectbox("Unidade de atendimento", opts(col_unidade,  "Todas"))
 filtro_servico   = st.sidebar.selectbox("Serviço",                opts(col_servico,  "Todos"))
@@ -155,27 +173,27 @@ else:
     filtro_data = None
 
 # ══════════════════════════════════════════════
-# APLICAR FILTROS
+# APLICAR FILTROS — opera sobre cópia mínima
 # ══════════════════════════════════════════════
-df_f = df.copy()
+mask = pd.Series(True, index=df.index)
 
 if search:
-    mask = pd.Series(False, index=df_f.index)
-    if col_nome in df_f.columns:
-        mask |= df_f[col_nome].astype(str).str.lower().str.contains(search.lower(), na=False)
-    if col_cpf in df_f.columns:
-        mask |= df_f[col_cpf].astype(str).str.contains(search, na=False)
-    df_f = df_f[mask]
+    m = pd.Series(False, index=df.index)
+    if col_nome in df.columns:
+        m |= df[col_nome].astype(str).str.lower().str.contains(search.lower(), na=False)
+    if col_cpf in df.columns:
+        m |= df[col_cpf].astype(str).str.contains(search, na=False)
+    mask &= m
 
-if filtro_unidade   != "Todas" and col_unidade   in df_f.columns: df_f = df_f[df_f[col_unidade]   == filtro_unidade]
-if filtro_servico   != "Todos" and col_servico   in df_f.columns: df_f = df_f[df_f[col_servico]   == filtro_servico]
-if filtro_categoria != "Todas" and col_categoria in df_f.columns: df_f = df_f[df_f[col_categoria] == filtro_categoria]
-if filtro_login     != "Todos" and col_login     in df_f.columns: df_f = df_f[df_f[col_login]     == filtro_login]
+if filtro_unidade   != "Todas" and col_unidade   in df.columns: mask &= df[col_unidade].astype(str)   == filtro_unidade
+if filtro_servico   != "Todos" and col_servico   in df.columns: mask &= df[col_servico].astype(str)   == filtro_servico
+if filtro_categoria != "Todas" and col_categoria in df.columns: mask &= df[col_categoria].astype(str) == filtro_categoria
+if filtro_login     != "Todos" and col_login     in df.columns: mask &= df[col_login].astype(str)     == filtro_login
 
-if filtro_data and col_data in df_f.columns and len(filtro_data) == 2:
-    d0 = pd.Timestamp(filtro_data[0])
-    d1 = pd.Timestamp(filtro_data[1])
-    df_f = df_f[(df_f[col_data] >= d0) & (df_f[col_data] <= d1)]
+if filtro_data and col_data in df.columns and len(filtro_data) == 2:
+    mask &= (df[col_data] >= pd.Timestamp(filtro_data[0])) & (df[col_data] <= pd.Timestamp(filtro_data[1]))
+
+df_f = df[mask]
 
 # ══════════════════════════════════════════════
 # TÍTULO E MÉTRICAS
@@ -194,14 +212,14 @@ m5.metric("Atendentes ativos",     f"{df_f[col_login].nunique():,}"   if col_log
 st.markdown("---")
 
 # ══════════════════════════════════════════════
-# ABAS PRINCIPAIS
+# ABAS
 # ══════════════════════════════════════════════
 aba_registros, aba_graficos, aba_atendentes, aba_exportar = st.tabs([
     "📄 Registros", "📊 Gráficos", "👥 Atendentes", "📥 Exportar"
 ])
 
 # ─────────────────────────────────────
-# ABA 1 — REGISTROS + perfil do cidadão
+# ABA 1 — REGISTROS
 # ─────────────────────────────────────
 with aba_registros:
     st.subheader("Registros de atendimento")
@@ -210,8 +228,13 @@ with aba_registros:
                                    col_servico, col_data, col_login, col_categoria]
                       if v in df_f.columns]
 
+    # Exibe no máximo 500 linhas na tabela para não sobrecarregar
+    df_exib = df_f[colunas_tabela].head(500).reset_index(drop=True)
+    if len(df_f) > 500:
+        st.caption(f"⚠️ Exibindo 500 de {len(df_f):,} registros. Use os filtros para refinar.")
+
     evento = st.dataframe(
-        df_f[colunas_tabela].reset_index(drop=True),
+        df_exib,
         use_container_width=True,
         hide_index=True,
         on_select="rerun",
@@ -222,11 +245,11 @@ with aba_registros:
 
     if selected_rows:
         idx = selected_rows[0]
-        row = df_f.iloc[idx]
+        row = df_exib.iloc[idx]
         cpf_sel = row.get(col_cpf)
 
         if cpf_sel:
-            registros_cpf = df[df[col_cpf] == cpf_sel]
+            registros_cpf = df[df[col_cpf].astype(str) == str(cpf_sel)]
             st.markdown("---")
             st.subheader(f"👤 Perfil: {row.get(col_nome, 'Cidadão')}")
 
@@ -244,7 +267,7 @@ with aba_registros:
                          use_container_width=True, hide_index=True)
 
             if col_servico in registros_cpf.columns:
-                svc_count = registros_cpf[col_servico].value_counts().reset_index()
+                svc_count = registros_cpf[col_servico].astype(str).value_counts().reset_index()
                 svc_count.columns = ["Serviço", "Qtd"]
                 fig = px.bar(svc_count, x="Qtd", y="Serviço", orientation="h",
                              title="Serviços recebidos por este cidadão",
@@ -255,7 +278,7 @@ with aba_registros:
                 st.plotly_chart(fig, use_container_width=True)
 
 # ─────────────────────────────────────
-# ABA 2 — GRÁFICOS GERAIS
+# ABA 2 — GRÁFICOS
 # ─────────────────────────────────────
 with aba_graficos:
     if df_f.empty:
@@ -265,7 +288,7 @@ with aba_graficos:
 
         with g1:
             if col_servico in df_f.columns:
-                dados_svc = df_f[col_servico].value_counts().reset_index()
+                dados_svc = df_f[col_servico].astype(str).value_counts().reset_index()
                 dados_svc.columns = ["Serviço", "Qtd"]
                 fig1 = px.bar(dados_svc, x="Qtd", y="Serviço", orientation="h",
                               title="Atendimentos por tipo de serviço",
@@ -276,7 +299,7 @@ with aba_graficos:
 
         with g2:
             if col_unidade in df_f.columns:
-                dados_uni = df_f[col_unidade].value_counts().reset_index()
+                dados_uni = df_f[col_unidade].astype(str).value_counts().reset_index()
                 dados_uni.columns = ["Unidade", "Qtd"]
                 fig2 = px.bar(dados_uni, x="Qtd", y="Unidade", orientation="h",
                               title="Atendimentos por unidade",
@@ -289,7 +312,7 @@ with aba_graficos:
 
         with g3:
             if col_login in df_f.columns:
-                dados_login = df_f[col_login].value_counts().reset_index()
+                dados_login = df_f[col_login].astype(str).value_counts().reset_index()
                 dados_login.columns = ["Atendente", "Qtd"]
                 fig3 = px.bar(dados_login, x="Qtd", y="Atendente", orientation="h",
                               title="Atendimentos por atendente",
@@ -300,9 +323,10 @@ with aba_graficos:
 
         with g4:
             if col_data in df_f.columns:
-                df_tempo = df_f.dropna(subset=[col_data]).copy()
+                df_tempo = df_f[[col_data]].dropna().copy()
                 df_tempo["Mes"] = df_tempo[col_data].dt.to_period("M").astype(str)
                 dados_tempo = df_tempo.groupby("Mes").size().reset_index(name="Qtd")
+                del df_tempo
                 fig4 = px.line(dados_tempo, x="Mes", y="Qtd",
                                title="Evolução dos atendimentos ao longo do tempo",
                                markers=True)
@@ -311,15 +335,18 @@ with aba_graficos:
 
         if col_unidade in df_f.columns and col_servico in df_f.columns:
             st.markdown("##### Mapa de calor — Serviços por unidade")
-            heat = df_f.groupby([col_unidade, col_servico]).size().reset_index(name="Qtd")
-            heat_pivot = heat.pivot(index=col_unidade, columns=col_servico, values="Qtd").fillna(0)
+            heat = df_f.groupby(
+                [df_f[col_unidade].astype(str), df_f[col_servico].astype(str)]
+            ).size().reset_index(name="Qtd")
+            heat.columns = ["Unidade", "Serviço", "Qtd"]
+            heat_pivot = heat.pivot(index="Unidade", columns="Serviço", values="Qtd").fillna(0)
             fig5 = px.imshow(heat_pivot, text_auto=True, color_continuous_scale="Blues",
                              title="Quantidade de atendimentos por unidade e tipo de serviço")
             fig5.update_layout(xaxis_title="Serviço", yaxis_title="Unidade")
             st.plotly_chart(fig5, use_container_width=True)
 
 # ─────────────────────────────────────
-# ABA 3 — PERFIL DO ATENDENTE
+# ABA 3 — ATENDENTES
 # ─────────────────────────────────────
 with aba_atendentes:
     st.subheader("Perfil por atendente")
@@ -327,11 +354,11 @@ with aba_atendentes:
     if col_login not in df_f.columns:
         st.warning("Coluna de login/atendente não encontrada.")
     else:
-        atendentes = sorted(df_f[col_login].dropna().unique().tolist())
+        atendentes = sorted(df_f[col_login].astype(str).dropna().unique().tolist())
         atendente_sel = st.selectbox("Selecione o atendente", atendentes)
 
         if atendente_sel:
-            df_at = df_f[df_f[col_login] == atendente_sel]
+            df_at = df_f[df_f[col_login].astype(str) == atendente_sel]
 
             a1, a2, a3 = st.columns(3)
             a1.metric("Total de atendimentos", len(df_at))
@@ -342,7 +369,7 @@ with aba_atendentes:
 
             with col_esq:
                 if col_servico in df_at.columns:
-                    svc_at = df_at[col_servico].value_counts().reset_index()
+                    svc_at = df_at[col_servico].astype(str).value_counts().reset_index()
                     svc_at.columns = ["Serviço", "Qtd"]
                     fig_a1 = px.bar(svc_at, x="Qtd", y="Serviço", orientation="h",
                                     title="Serviços realizados", color="Qtd",
@@ -353,7 +380,7 @@ with aba_atendentes:
 
             with col_dir:
                 if col_unidade in df_at.columns:
-                    uni_at = df_at[col_unidade].value_counts().reset_index()
+                    uni_at = df_at[col_unidade].astype(str).value_counts().reset_index()
                     uni_at.columns = ["Unidade", "Qtd"]
                     fig_a2 = px.pie(uni_at, names="Unidade", values="Qtd",
                                     title="Distribuição por unidade")
