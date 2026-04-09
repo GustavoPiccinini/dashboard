@@ -15,9 +15,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════
-# MAPEAMENTO DE COLUNAS
-# ══════════════════════════════════════════════
 COL = {
     "codigo":     "Codigo_do_grupo",
     "cpf":        "CPF",
@@ -33,36 +30,36 @@ COL = {
 }
 
 # ══════════════════════════════════════════════
-# CONEXÃO DUCKDB — reconecta automaticamente em reruns
+# DUCKDB — cria e reconecta automaticamente
 # ══════════════════════════════════════════════
-def criar_conexao(filepath: str, enc: str = "utf-8") -> duckdb.DuckDBPyConnection:
+def criar_conexao(filepath: str) -> duckdb.DuckDBPyConnection:
     con = duckdb.connect()
     ext = os.path.splitext(filepath)[1].lower()
     csv_path = filepath
-    if ext not in (".csv",):
+
+    if ext != ".csv":
         csv_path = filepath + "_tmp.csv"
         if not os.path.exists(csv_path):
             df_tmp = pd.read_excel(filepath)
             df_tmp.to_csv(csv_path, index=False, encoding="utf-8")
             del df_tmp
         st.session_state["tmp_csv"] = csv_path
-        enc = "utf-8"
+        con.execute(f"CREATE OR REPLACE VIEW dados AS SELECT * FROM read_csv_auto('{csv_path}', header=true)")
+    else:
+        for enc in ["utf-8", "latin-1", "cp1252", "iso-8859-1"]:
+            try:
+                con.execute(f"""
+                    CREATE OR REPLACE VIEW dados AS
+                    SELECT * FROM read_csv_auto('{csv_path}', header=true, encoding='{enc}', ignore_errors=true)
+                """)
+                con.execute("SELECT COUNT(*) FROM dados").fetchone()
+                break
+            except Exception:
+                continue
 
-    for e in ([enc] if enc != "utf-8" else ["utf-8", "latin-1", "cp1252", "iso-8859-1"]):
-        try:
-            con.execute(f"""
-                CREATE OR REPLACE VIEW dados AS
-                SELECT * FROM read_csv_auto('{csv_path}',
-                    header=true, encoding='{e}', ignore_errors=true)
-            """)
-            con.execute("SELECT COUNT(*) FROM dados").fetchone()
-            return con
-        except Exception:
-            continue
-    raise ValueError("Não foi possível ler o arquivo.")
+    return con
 
 def get_con() -> duckdb.DuckDBPyConnection:
-    """Retorna conexão válida, recriando se necessário."""
     tmp_path = st.session_state.get("tmp_path")
     if not tmp_path:
         st.error("Faça upload do arquivo.")
@@ -74,7 +71,6 @@ def get_con() -> duckdb.DuckDBPyConnection:
             return con
     except Exception:
         pass
-    # Reconecta
     con = criar_conexao(tmp_path)
     st.session_state["con"] = con
     return con
@@ -121,10 +117,7 @@ st.sidebar.markdown("---")
 st.sidebar.title("⚙️ Configurações")
 st.sidebar.markdown("---")
 
-uploaded = st.sidebar.file_uploader(
-    "📂 Carregar arquivo", type=["csv", "xlsx", "xls"],
-    help="CSV ou Excel. Processado via DuckDB."
-)
+uploaded = st.sidebar.file_uploader("📂 Carregar arquivo", type=["csv", "xlsx", "xls"])
 
 if uploaded:
     if st.session_state.get("last_file") != uploaded.name:
@@ -135,11 +128,10 @@ if uploaded:
         tmp.close()
         st.session_state["tmp_path"] = tmp.name
         st.session_state["last_file"] = uploaded.name
-        st.session_state.pop("con", None)  # força reconexão
+        st.session_state.pop("con", None)
     try:
         total_geral = run_val("SELECT COUNT(*) FROM dados")
-        st.session_state["total_geral"] = total_geral
-        st.sidebar.success(f"✅ {total_geral:,} registros carregados!")
+        st.sidebar.success(f"✅ {total_geral:,} registros!")
     except Exception as e:
         st.sidebar.error(f"Erro: {e}")
         st.stop()
@@ -150,7 +142,7 @@ else:
     st.stop()
 
 # ══════════════════════════════════════════════
-# COLUNAS DISPONÍVEIS
+# COLUNAS
 # ══════════════════════════════════════════════
 c_cpf      = safe_col("cpf")
 c_nome     = safe_col("nome")
@@ -191,7 +183,7 @@ if c_data:
         pass
 
 # ══════════════════════════════════════════════
-# WHERE CLAUSE
+# WHERE
 # ══════════════════════════════════════════════
 wheres = []
 if search:
@@ -205,7 +197,6 @@ if f_categoria != "Todas" and c_categoria: wheres.append(f'"{c_categoria}" = \'{
 if f_login     != "Todos" and c_login:     wheres.append(f'"{c_login}" = \'{f_login}\'')
 if f_data and len(f_data) == 2 and c_data:
     wheres.append(f"CAST(\"{c_data}\" AS DATE) BETWEEN '{f_data[0]}' AND '{f_data[1]}'")
-
 where_sql = ("WHERE " + " AND ".join(wheres)) if wheres else ""
 
 # ══════════════════════════════════════════════
@@ -215,11 +206,11 @@ st.title("📋 Dashboard de Atendimentos")
 st.caption("Clique em qualquer linha para ver o perfil completo.")
 st.markdown("---")
 
-total_f  = run_val(f"SELECT COUNT(*) FROM dados {where_sql}")
-cpfs_f   = run_val(f'SELECT COUNT(DISTINCT "{c_cpf}") FROM dados {where_sql}')     if c_cpf     else "—"
-uni_f    = run_val(f'SELECT COUNT(DISTINCT "{c_unidade}") FROM dados {where_sql}') if c_unidade else "—"
-svc_f    = run_val(f'SELECT COUNT(DISTINCT "{c_servico}") FROM dados {where_sql}') if c_servico else "—"
-login_f  = run_val(f'SELECT COUNT(DISTINCT "{c_login}") FROM dados {where_sql}')   if c_login   else "—"
+total_f = run_val(f"SELECT COUNT(*) FROM dados {where_sql}")
+cpfs_f  = run_val(f'SELECT COUNT(DISTINCT "{c_cpf}") FROM dados {where_sql}')     if c_cpf     else "—"
+uni_f   = run_val(f'SELECT COUNT(DISTINCT "{c_unidade}") FROM dados {where_sql}') if c_unidade else "—"
+svc_f   = run_val(f'SELECT COUNT(DISTINCT "{c_servico}") FROM dados {where_sql}') if c_servico else "—"
+login_f = run_val(f'SELECT COUNT(DISTINCT "{c_login}") FROM dados {where_sql}')   if c_login   else "—"
 
 m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric("Total atendimentos", f"{total_f:,}")
@@ -234,9 +225,7 @@ st.markdown("---")
 # ══════════════════════════════════════════════
 aba_reg, aba_graf, aba_at, aba_exp = st.tabs(["📄 Registros", "📊 Gráficos", "👥 Atendentes", "📥 Exportar"])
 
-# ─────────────────────────────────────
-# ABA 1 — REGISTROS
-# ─────────────────────────────────────
+# ── ABA 1 REGISTROS ──────────────────────────
 with aba_reg:
     st.subheader("Registros de atendimento")
     cols_tab = [c for c in [c_codigo, c_nome, c_cpf, c_unidade, c_servico, c_data, c_login, c_categoria] if c]
@@ -254,12 +243,12 @@ with aba_reg:
         cpf_sel = str(row.get(c_cpf, "")).replace("'", "''")
         if cpf_sel:
             st.markdown("---")
-            st.subheader(f"👤 Perfil: {row.get(c_nome, 'Cidadão')}")
+            st.subheader(f"👤 {row.get(c_nome, 'Cidadão')}")
             total_cpf = run_val(f'SELECT COUNT(*) FROM dados WHERE CAST("{c_cpf}" AS VARCHAR) = \'{cpf_sel}\'')
             pa, pb, pc, pd_ = st.columns(4)
-            pa.metric("CPF",           cpf_sel)
-            pb.metric("NIS",           str(row.get(c_nis,  "—")))
-            pc.metric("Nascimento",    str(row.get(c_nasc, "—")))
+            pa.metric("CPF", cpf_sel)
+            pb.metric("NIS", str(row.get(c_nis, "—")))
+            pc.metric("Nascimento", str(row.get(c_nasc, "—")))
             pd_.metric("Atendimentos", total_cpf)
 
             cols_h = [c for c in [c_data, c_servico, c_unidade, c_quantia, c_login, c_categoria] if c]
@@ -268,17 +257,14 @@ with aba_reg:
             st.dataframe(df_hist, width="stretch", hide_index=True)
 
             if c_servico:
-                svc_c = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados WHERE CAST("{c_cpf}" AS VARCHAR) = \'{cpf_sel}\' GROUP BY "{c_servico}" ORDER BY Qtd DESC')
-                fig = px.bar(svc_c, x="Qtd", y="Servico", orientation="h",
-                             title="Serviços recebidos", color="Qtd",
-                             color_continuous_scale="Blues", text="Qtd")
+                d = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados WHERE CAST("{c_cpf}" AS VARCHAR) = \'{cpf_sel}\' GROUP BY "{c_servico}" ORDER BY Qtd DESC')
+                fig = px.bar(d, x="Qtd", y="Servico", orientation="h", title="Serviços recebidos",
+                             color="Qtd", color_continuous_scale="Blues", text="Qtd")
                 fig.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                 fig.update_traces(textposition="outside")
                 st.plotly_chart(fig, width="stretch")
 
-# ─────────────────────────────────────
-# ABA 2 — GRÁFICOS
-# ─────────────────────────────────────
+# ── ABA 2 GRÁFICOS ───────────────────────────
 with aba_graf:
     if total_f == 0:
         st.warning("Nenhum dado com os filtros atuais.")
@@ -321,13 +307,10 @@ with aba_graf:
             st.markdown("##### Mapa de calor — Unidade × Serviço")
             d = run(f'SELECT "{c_unidade}" AS Unidade, "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_unidade}", "{c_servico}"')
             pivot = d.pivot(index="Unidade", columns="Servico", values="Qtd").fillna(0)
-            fig5 = px.imshow(pivot, text_auto=True, color_continuous_scale="Blues",
-                             title="Atendimentos por unidade e serviço")
+            fig5 = px.imshow(pivot, text_auto=True, color_continuous_scale="Blues", title="Unidade × Serviço")
             st.plotly_chart(fig5, width="stretch")
 
-# ─────────────────────────────────────
-# ABA 3 — ATENDENTES
-# ─────────────────────────────────────
+# ── ABA 3 ATENDENTES ─────────────────────────
 with aba_at:
     st.subheader("Perfil por atendente")
     if not c_login:
@@ -347,25 +330,23 @@ with aba_at:
             with cl:
                 if c_servico:
                     d = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados {w_at} GROUP BY "{c_servico}" ORDER BY Qtd DESC')
-                    fig_a1 = px.bar(d, x="Qtd", y="Servico", orientation="h", title="Serviços realizados",
-                                    color="Qtd", color_continuous_scale="Teal", text="Qtd")
-                    fig_a1.update_layout(coloraxis_showscale=False, yaxis_title=None)
-                    fig_a1.update_traces(textposition="outside")
-                    st.plotly_chart(fig_a1, width="stretch")
+                    fa1 = px.bar(d, x="Qtd", y="Servico", orientation="h", title="Serviços realizados",
+                                 color="Qtd", color_continuous_scale="Teal", text="Qtd")
+                    fa1.update_layout(coloraxis_showscale=False, yaxis_title=None)
+                    fa1.update_traces(textposition="outside")
+                    st.plotly_chart(fa1, width="stretch")
             with cr:
                 if c_unidade:
                     d = run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Qtd FROM dados {w_at} GROUP BY "{c_unidade}"')
-                    fig_a2 = px.pie(d, names="Unidade", values="Qtd", title="Por unidade")
-                    st.plotly_chart(fig_a2, width="stretch")
+                    fa2 = px.pie(d, names="Unidade", values="Qtd", title="Por unidade")
+                    st.plotly_chart(fa2, width="stretch")
 
             cols_at = [c for c in [c_nome, c_cpf, c_servico, c_data, c_unidade] if c]
             df_at = run(f'SELECT {", ".join([f"{chr(34)}{c}{chr(34)}" for c in cols_at])} FROM dados {w_at}')
             st.markdown("##### Cidadãos atendidos")
             st.dataframe(df_at, width="stretch", hide_index=True)
 
-# ─────────────────────────────────────
-# ABA 4 — EXPORTAR
-# ─────────────────────────────────────
+# ── ABA 4 EXPORTAR ───────────────────────────
 with aba_exp:
     st.subheader("Exportar dados filtrados")
     st.caption(f"{total_f:,} registros com os filtros atuais.")
