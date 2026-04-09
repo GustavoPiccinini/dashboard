@@ -33,29 +33,26 @@ COL = {
 # DUCKDB — cria e reconecta automaticamente
 # ══════════════════════════════════════════════
 def criar_conexao(filepath: str) -> duckdb.DuckDBPyConnection:
-    con = duckdb.connect()
+    # conexão explícita (mais estável no cloud)
+    con = duckdb.connect(database=':memory:', read_only=False)
     ext = os.path.splitext(filepath)[1].lower()
     csv_path = filepath
 
-    if ext != ".csv":
-        csv_path = filepath + "_tmp.csv"
-        if not os.path.exists(csv_path):
-            df_tmp = pd.read_excel(filepath)
-            df_tmp.to_csv(csv_path, index=False, encoding="utf-8")
-            del df_tmp
-        st.session_state["tmp_csv"] = csv_path
-        con.execute(f"CREATE OR REPLACE VIEW dados AS SELECT * FROM read_csv_auto('{csv_path}', header=true)")
+    if ext == ".csv":
+     con.execute(f"""
+        CREATE OR REPLACE VIEW dados AS
+        SELECT * FROM read_csv_auto(
+            '{filepath}',
+            header=true,
+            sample_size=10000
+        )
+    """)
     else:
-        for enc in ["utf-8", "latin-1", "cp1252", "iso-8859-1"]:
-            try:
-                con.execute(f"""
-                    CREATE OR REPLACE VIEW dados AS
-                    SELECT * FROM read_csv_auto('{csv_path}', header=true, encoding='{enc}', ignore_errors=true)
-                """)
-                con.execute("SELECT COUNT(*) FROM dados").fetchone()
-                break
-            except Exception:
-                continue
+    # leitura de Excel direto pelo DuckDB (mais leve)
+     con.execute(f"""
+        CREATE OR REPLACE VIEW dados AS
+        SELECT * FROM read_excel('{filepath}')
+    """)
 
     return con
 
