@@ -60,6 +60,14 @@ def criar_conexao(filepath: str) -> duckdb.DuckDBPyConnection:
         if df_tmp is None or df_tmp.shape[1] <= 1:
             raise ValueError("Não foi possível ler o arquivo.")
 
+        # Corrigir coluna DATA: formato DD/MM/YYYY HH:MM:SS -> YYYY-MM-DD HH:MM:SS
+        col_data = next((c for c in df_tmp.columns if c.strip().upper() == "DATA"), None)
+        if col_data:
+            df_tmp[col_data] = pd.to_datetime(
+                df_tmp[col_data].astype(str).str.strip(),
+                dayfirst=True, errors="coerce"
+            ).dt.strftime("%Y-%m-%d %H:%M:%S")
+
         df_tmp.to_csv(csv_path, index=False, encoding="utf-8")
         del df_tmp
         st.session_state["tmp_csv"] = csv_path
@@ -199,8 +207,8 @@ f_login     = st.sidebar.selectbox("Atendente", opts_db(c_login,    "Todos"))
 f_data = None
 if c_data:
     try:
-        dmin = run(f'SELECT MIN(TRY_CAST("{c_data}" AS DATE)) FROM dados').iloc[0, 0]
-        dmax = run(f'SELECT MAX(TRY_CAST("{c_data}" AS DATE)) FROM dados').iloc[0, 0]
+        dmin = run(f'SELECT MIN(CAST("{c_data}" AS DATE)) FROM dados').iloc[0, 0]
+        dmax = run(f'SELECT MAX(CAST("{c_data}" AS DATE)) FROM dados').iloc[0, 0]
         if dmin and dmax:
             f_data = st.sidebar.date_input("Período", value=(dmin, dmax), min_value=dmin, max_value=dmax)
     except Exception:
@@ -220,7 +228,7 @@ if f_servico   != "Todos" and c_servico:   wheres.append(f'"{c_servico}" = \'{f_
 if f_categoria != "Todas" and c_categoria: wheres.append(f'"{c_categoria}" = \'{f_categoria}\'')
 if f_login     != "Todos" and c_login:     wheres.append(f'"{c_login}" = \'{f_login}\'')
 if f_data and len(f_data) == 2 and c_data:
-    wheres.append(f"TRY_CAST(\"{c_data}\" AS DATE) BETWEEN '{f_data[0]}' AND '{f_data[1]}'")
+    wheres.append(f"CAST(\"{c_data}\" AS DATE) BETWEEN '{f_data[0]}' AND '{f_data[1]}'")
 
 where_sql = ("WHERE " + " AND ".join(wheres)) if wheres else ""
 
@@ -328,7 +336,7 @@ with aba_graf:
                 st.plotly_chart(fig3, width="stretch")
         with g4:
             if c_data:
-                d = run(f'SELECT STRFTIME(TRY_CAST("{c_data}" AS DATE), \'%Y-%m\') AS Mes, COUNT(*) AS Qtd FROM dados {where_sql} WHERE "{c_data}" IS NOT NULL AND TRY_CAST("{c_data}" AS DATE) IS NOT NULL GROUP BY Mes ORDER BY Mes')
+                d = run(f'SELECT STRFTIME(CAST("{c_data}" AS DATE), \'%Y-%m\') AS Mes, COUNT(*) AS Qtd FROM dados {where_sql} WHERE "{c_data}" IS NOT NULL GROUP BY Mes ORDER BY Mes')
                 fig4 = px.line(d, x="Mes", y="Qtd", title="Evolução mensal", markers=True)
                 fig4.update_layout(xaxis_title="Mês", yaxis_title="Atendimentos")
                 st.plotly_chart(fig4, width="stretch")
