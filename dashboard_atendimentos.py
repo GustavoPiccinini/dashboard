@@ -261,7 +261,7 @@ with aba_reg:
     if total_f > 500:
         st.caption(f"⚠️ Exibindo 500 de {total_f:,}. Use os filtros para refinar.")
 
-    evento = st.dataframe(df_tab, width="stretch", hide_index=True,
+    evento = st.dataframe(df_tab, use_container_width=True, hide_index=True,
                           on_select="rerun", selection_mode="single-row")
 
     sel = evento.selection.rows if hasattr(evento, "selection") else []
