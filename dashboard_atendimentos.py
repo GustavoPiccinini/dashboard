@@ -328,18 +328,25 @@ with aba_graf:
         g3, g4 = st.columns(2)
         with g3:
             if c_login:
-                d = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Qtd DESC')
-                fig3 = px.bar(d, x="Qtd", y="Atendente", orientation="h", title="Por atendente",
-                              color="Qtd", color_continuous_scale="Oranges", text="Qtd")
-                fig3.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
-                fig3.update_traces(textposition="outside")
-                st.plotly_chart(fig3, width="stretch")
+                try:
+                    d = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Qtd DESC')
+                    fig3 = px.bar(d, x="Qtd", y="Atendente", orientation="h", title="Por atendente",
+                                  color="Qtd", color_continuous_scale="Oranges", text="Qtd")
+                    fig3.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
+                    fig3.update_traces(textposition="outside")
+                    st.plotly_chart(fig3, width="stretch")
+                except Exception:
+                    st.caption("Gráfico de atendentes indisponível.")
         with g4:
             if c_data:
-                d = run(f'SELECT STRFTIME(CAST("{c_data}" AS DATE), \'%Y-%m\') AS Mes, COUNT(*) AS Qtd FROM dados {where_sql} WHERE "{c_data}" IS NOT NULL GROUP BY Mes ORDER BY Mes')
-                fig4 = px.line(d, x="Mes", y="Qtd", title="Evolução mensal", markers=True)
-                fig4.update_layout(xaxis_title="Mês", yaxis_title="Atendimentos")
-                st.plotly_chart(fig4, width="stretch")
+                try:
+                    d = run(f'SELECT STRFTIME(CAST("{c_data}" AS DATE), \'%Y-%m\') AS Mes, COUNT(*) AS Qtd FROM dados {where_sql} WHERE "{c_data}" IS NOT NULL GROUP BY Mes ORDER BY Mes')
+                    if not d.empty:
+                        fig4 = px.line(d, x="Mes", y="Qtd", title="Evolução mensal", markers=True)
+                        fig4.update_layout(xaxis_title="Mês", yaxis_title="Atendimentos")
+                        st.plotly_chart(fig4, width="stretch")
+                except Exception:
+                    st.caption("Gráfico de evolução indisponível.")
 
         if c_unidade and c_servico:
             st.markdown("##### Mapa de calor — Unidade × Serviço")
