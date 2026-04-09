@@ -68,7 +68,11 @@ def criar_conexao(filepath: str) -> duckdb.DuckDBPyConnection:
     con.execute(f"""
         CREATE OR REPLACE VIEW dados AS
         SELECT * FROM read_csv_auto('{csv_path}',
-            header=true, encoding='utf-8', ignore_errors=true)
+        header=true,
+        delim=',',
+        ignore_errors=true,
+        auto_detect=true
+    )
     """)
     con.execute("SELECT COUNT(*) FROM dados").fetchone()
     return con
