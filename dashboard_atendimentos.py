@@ -32,27 +32,26 @@ COL = {
 # ══════════════════════════════════════════════
 # DUCKDB — cria e reconecta automaticamente
 # ══════════════════════════════════════════════
+
 def criar_conexao(filepath: str) -> duckdb.DuckDBPyConnection:
-    # conexão explícita (mais estável no cloud)
     con = duckdb.connect(database=':memory:', read_only=False)
+
     ext = os.path.splitext(filepath)[1].lower()
-    csv_path = filepath
 
     if ext == ".csv":
-     con.execute(f"""
-        CREATE OR REPLACE VIEW dados AS
-        SELECT * FROM read_csv_auto(
-            '{filepath}',
-            header=true,
-            sample_size=10000
-        )
-    """)
+        con.execute(f"""
+            CREATE OR REPLACE VIEW dados AS
+            SELECT * FROM read_csv_auto(
+                '{filepath}',
+                header=true,
+                sample_size=10000
+            )
+        """)
     else:
-    # leitura de Excel direto pelo DuckDB (mais leve)
-     con.execute(f"""
-        CREATE OR REPLACE VIEW dados AS
-        SELECT * FROM read_excel('{filepath}')
-    """)
+     df_tmp = pd.read_excel(filepath)
+     con.register("dados", df_tmp)
+     del df_tmp
+
 
     return con
 
