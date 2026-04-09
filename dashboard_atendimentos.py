@@ -35,31 +35,43 @@ COL = {
 # ══════════════════════════════════════════════
 # CONEXÃO DUCKDB — reconecta automaticamente em reruns
 # ══════════════════════════════════════════════
-def criar_conexao(filepath: str, enc: str = "utf-8") -> duckdb.DuckDBPyConnection:
-    con = duckdb.connect()
+def criar_conexao(filepath: str) -> duckdb.DuckDBPyConnection:
+    # Converte qualquer arquivo para CSV UTF-8 limpo via pandas
+    # Isso resolve: separador ; , encoding latin-1/cp1252, Excel
     ext = os.path.splitext(filepath)[1].lower()
-    csv_path = filepath
-    if ext not in (".csv",):
-        csv_path = filepath + "_tmp.csv"
-        if not os.path.exists(csv_path):
-            df_tmp = pd.read_excel(filepath)
-            df_tmp.to_csv(csv_path, index=False, encoding="utf-8")
-            del df_tmp
-        st.session_state["tmp_csv"] = csv_path
-        enc = "utf-8"
+    csv_path = filepath + "_clean.csv"
 
-    for e in ([enc] if enc != "utf-8" else ["utf-8", "latin-1", "cp1252", "iso-8859-1"]):
-        try:
-            con.execute(f"""
-                CREATE OR REPLACE VIEW dados AS
-                SELECT * FROM read_csv_auto('{csv_path}',
-                    header=true, encoding='{e}', ignore_errors=true)
-            """)
-            con.execute("SELECT COUNT(*) FROM dados").fetchone()
-            return con
-        except Exception:
-            continue
-    raise ValueError("Não foi possível ler o arquivo.")
+    if not os.path.exists(csv_path):
+        if ext == ".csv":
+            df_tmp = None
+            for enc in ["utf-8", "latin-1", "cp1252", "iso-8859-1"]:
+                for sep in [",", ";", "\t"]:
+                    try:
+                        df_tmp = pd.read_csv(filepath, encoding=enc, sep=sep, engine="python")
+                        if df_tmp.shape[1] > 1:  # separador correto tem mais de 1 coluna
+                            break
+                    except Exception:
+                        continue
+                if df_tmp is not None and df_tmp.shape[1] > 1:
+                    break
+        else:
+            df_tmp = pd.read_excel(filepath)
+
+        if df_tmp is None or df_tmp.shape[1] <= 1:
+            raise ValueError("Não foi possível ler o arquivo.")
+
+        df_tmp.to_csv(csv_path, index=False, encoding="utf-8")
+        del df_tmp
+        st.session_state["tmp_csv"] = csv_path
+
+    con = duckdb.connect()
+    con.execute(f"""
+        CREATE OR REPLACE VIEW dados AS
+        SELECT * FROM read_csv_auto('{csv_path}',
+            header=true, encoding='utf-8', ignore_errors=true)
+    """)
+    con.execute("SELECT COUNT(*) FROM dados").fetchone()
+    return con
 
 def get_con() -> duckdb.DuckDBPyConnection:
     """Retorna conexão válida, recriando se necessário."""
