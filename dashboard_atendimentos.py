@@ -340,7 +340,19 @@ with aba_graf:
         with g4:
             if c_data:
                 try:
-                    d = run(f'SELECT STRFTIME(CAST("{c_data}" AS DATE), \'%Y-%m\') AS Mes, COUNT(*) AS Qtd FROM dados {where_sql} WHERE "{c_data}" IS NOT NULL GROUP BY Mes ORDER BY Mes')
+                    if where_sql.strip():
+                        d = run(f'''
+                        SELECT STRFTIME(CAST("{c_data}" AS DATE), '%Y-%m') AS Mes, COUNT(*) AS Qtd
+                        FROM dados {where_sql} AND "{c_data}" IS NOT NULL
+                        GROUP BY Mes ORDER BY Mes
+                        ''')
+                    else:
+                        d = run(f'''
+                        SELECT STRFTIME(CAST("{c_data}" AS DATE), '%Y-%m') AS Mes, COUNT(*) AS Qtd
+                        FROM dados
+                        WHERE "{c_data}" IS NOT NULL
+                        GROUP BY Mes ORDER BY Mes
+                        ''')
                     if not d.empty:
                         fig4 = px.line(d, x="Mes", y="Qtd", title="Evolução mensal", markers=True)
                         fig4.update_layout(xaxis_title="Mês", yaxis_title="Atendimentos")
@@ -364,7 +376,10 @@ with aba_at:
     if not c_login:
         st.warning("Coluna de login não encontrada.")
     else:
-        atendentes = run(f'SELECT DISTINCT "{c_login}" FROM dados {where_sql} WHERE "{c_login}" IS NOT NULL ORDER BY "{c_login}"')[c_login].tolist()
+        if where_sql.strip():
+            atendentes = run(f'SELECT DISTINCT "{c_login}" FROM dados {where_sql} AND "{c_login}" IS NOT NULL ORDER BY "{c_login}"')[c_login].tolist()
+        else:
+            atendentes = run(f'SELECT DISTINCT "{c_login}" FROM dados WHERE "{c_login}" IS NOT NULL ORDER BY "{c_login}"')[c_login].tolist()
         at_sel = st.selectbox("Selecione o atendente", atendentes)
         if at_sel:
             at_safe = at_sel.replace("'", "''")
