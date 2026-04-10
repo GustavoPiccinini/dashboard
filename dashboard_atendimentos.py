@@ -157,7 +157,7 @@ st.sidebar.title("⚙️ Configurações")
 st.sidebar.markdown("---")
 
 uploaded = st.sidebar.file_uploader(
-    "📂 Carregar arquivo", type=["csv", "xlsx", "xls"],
+    "📂 Carregar arquivo", type=["csv", "xlsx", "xls","parquet"],
     help="CSV ou Excel. Processado via DuckDB."
 )
 
