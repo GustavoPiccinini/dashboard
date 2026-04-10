@@ -69,11 +69,22 @@ def criar_conexao(filepath: str) -> duckdb.DuckDBPyConnection:
             ).dt.strftime("%Y-%m-%d %H:%M:%S")
 
         df_tmp.to_csv(csv_path, index=False, encoding="utf-8")
+        parquet_path = filepath + ".parquet"
+        df_tmp.to_parquet(parquet_path, index=False)
+        parquet_path = filepath + ".parquet"
         del df_tmp
         st.session_state["tmp_csv"] = csv_path
 
     con = duckdb.connect()
-    con.execute(f"""
+    parquet_path = st.session_state.get("tmp_parquet")
+
+    if parquet_path and os.path.exists(parquet_path):
+     con.execute(f"""
+        CREATE OR REPLACE VIEW dados AS
+        SELECT * FROM '{parquet_path}'
+    """)
+    else:
+     con.execute(f"""
         CREATE OR REPLACE VIEW dados AS
         SELECT * FROM read_csv_auto('{csv_path}',
         header=true,
@@ -279,7 +290,7 @@ with aba_reg:
         if cpf_sel:
             st.markdown("---")
             st.subheader(f"👤 Perfil: {row.get(c_nome, 'Cidadão')}")
-            total_cpf = run_val(f'SELECT COUNT(*) FROM dados WHERE CAST("{c_cpf}" AS VARCHAR) = \'{cpf_sel}\'')
+            total_cpf = run_val(f'SELECT COUNT(*) FROM dados WHERE "{c_cpf}" = \'{cpf_sel}\'')
             pa, pb, pc, pd_ = st.columns(4)
             pa.metric("CPF",           cpf_sel)
             pb.metric("NIS",           str(row.get(c_nis,  "—")))
@@ -287,12 +298,14 @@ with aba_reg:
             pd_.metric("Atendimentos", total_cpf)
 
             cols_h = [c for c in [c_data, c_servico, c_unidade, c_quantia, c_login, c_categoria] if c]
-            df_hist = run(f'SELECT {", ".join([f"{chr(34)}{c}{chr(34)}" for c in cols_h])} FROM dados WHERE CAST("{c_cpf}" AS VARCHAR) = \'{cpf_sel}\'')
+            df_hist = run(f'''SELECT {", ".join([f"{chr(34)}{c}{chr(34)}" for c in cols_h])} FROM dados WHERE "{c_cpf}" = '{cpf_sel}'LIMIT 500''') 
+            if len(df_hist) == 500:
+                st.caption(f"⚠️ Exibindo 500 de {total_cpf:,} atendimentos para este CPF.")    
             st.markdown("##### Histórico de serviços")
             st.dataframe(df_hist, use_container_width=True, hide_index=True)
 
             if c_servico:
-                svc_c = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados WHERE CAST("{c_cpf}" AS VARCHAR) = \'{cpf_sel}\' GROUP BY "{c_servico}" ORDER BY Qtd DESC')
+                svc_c = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados WHERE "{c_cpf}" = \'{cpf_sel}\' GROUP BY "{c_servico}" ORDER BY Qtd DESC')
                 fig = px.bar(svc_c, x="Qtd", y="Servico", orientation="h",
                              title="Serviços recebidos", color="Qtd",
                              color_continuous_scale="Blues", text="Qtd")
@@ -405,7 +418,7 @@ with aba_at:
                     st.plotly_chart(fig_a2, use_container_width=True)
 
             cols_at = [c for c in [c_nome, c_cpf, c_servico, c_data, c_unidade] if c]
-            df_at = run(f'SELECT {", ".join([f"{chr(34)}{c}{chr(34)}" for c in cols_at])} FROM dados {w_at}')
+            df_at = run(f'''SELECT {", ".join([f"{chr(34)}{c}{chr(34)}" for c in cols_at])}FROM dados {w_at} LIMIT 500''')
             st.markdown("##### Cidadãos atendidos")
             st.dataframe(df_at, use_container_width=True, hide_index=True)
 
