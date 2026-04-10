@@ -37,88 +37,111 @@ COL = {
 # ══════════════════════════════════════════════
 def criar_conexao(filepath: str) -> duckdb.DuckDBPyConnection:
     # Converte qualquer arquivo para CSV UTF-8 limpo via pandas
-    # Isso resolve: separador ; , encoding latin-1/cp1252, Excel
     ext = os.path.splitext(filepath)[1].lower()
     csv_path = filepath + "_clean.csv"
+    parquet_path = filepath + ".parquet"
 
     if not os.path.exists(csv_path):
+        df_tmp = None
+
         if ext == ".csv":
-            df_tmp = None
             for enc in ["utf-8", "latin-1", "cp1252", "iso-8859-1"]:
                 for sep in [",", ";", "\t"]:
                     try:
                         df_tmp = pd.read_csv(filepath, encoding=enc, sep=sep, engine="python")
-                        if df_tmp.shape[1] > 1:  # separador correto tem mais de 1 coluna
+                        if df_tmp.shape[1] > 1:
                             break
                     except Exception:
                         continue
                 if df_tmp is not None and df_tmp.shape[1] > 1:
                     break
-        else:
+
+        elif ext in [".xlsx", ".xls"]:
             df_tmp = pd.read_excel(filepath)
 
+        elif ext == ".parquet":
+            df_tmp = pd.read_parquet(filepath)
+
+        else:
+            raise ValueError(f"Formato de arquivo não suportado: {ext}")
+
+        # validação
         if df_tmp is None or df_tmp.shape[1] <= 1:
             raise ValueError("Não foi possível ler o arquivo.")
 
-        # Corrigir coluna DATA: formato DD/MM/YYYY HH:MM:SS -> YYYY-MM-DD HH:MM:SS
+        # Corrigir coluna DATA
         col_data = next((c for c in df_tmp.columns if c.strip().upper() == "DATA"), None)
         if col_data:
             df_tmp[col_data] = pd.to_datetime(
                 df_tmp[col_data].astype(str).str.strip(),
-                dayfirst=True, errors="coerce"
+                dayfirst=True,
+                errors="coerce"
             ).dt.strftime("%Y-%m-%d %H:%M:%S")
 
+        # salvar CSV e Parquet
         df_tmp.to_csv(csv_path, index=False, encoding="utf-8")
-        parquet_path = filepath + ".parquet"
         df_tmp.to_parquet(parquet_path, index=False)
-        parquet_path = filepath + ".parquet"
-        del df_tmp
+
+        # salvar caminhos
         st.session_state["tmp_csv"] = csv_path
+        st.session_state["tmp_parquet"] = parquet_path
+
+        del df_tmp
 
     con = duckdb.connect()
+
     parquet_path = st.session_state.get("tmp_parquet")
 
     if parquet_path and os.path.exists(parquet_path):
-     con.execute(f"""
-        CREATE OR REPLACE VIEW dados AS
-        SELECT * FROM '{parquet_path}'
-    """)
+        con.execute(f"""
+            CREATE OR REPLACE VIEW dados AS
+            SELECT * FROM '{parquet_path}'
+        """)
     else:
-     con.execute(f"""
-        CREATE OR REPLACE VIEW dados AS
-        SELECT * FROM read_csv_auto('{csv_path}',
-        header=true,
-        delim=',',
-        ignore_errors=true,
-        auto_detect=true
-    )
-    """)
+        con.execute(f"""
+            CREATE OR REPLACE VIEW dados AS
+            SELECT * FROM read_csv_auto('{csv_path}',
+                header=true,
+                delim=',',
+                ignore_errors=true,
+                auto_detect=true
+            )
+        """)
+
     con.execute("SELECT COUNT(*) FROM dados").fetchone()
     return con
+
 
 def get_con() -> duckdb.DuckDBPyConnection:
     """Retorna conexão válida, recriando se necessário."""
     tmp_path = st.session_state.get("tmp_path")
+
     if not tmp_path:
         st.error("Faça upload do arquivo.")
         st.stop()
+
     con = st.session_state.get("con")
+
     try:
         if con:
             con.execute("SELECT COUNT(*) FROM dados").fetchone()
             return con
     except Exception:
         pass
+
     # Reconecta
     con = criar_conexao(tmp_path)
     st.session_state["con"] = con
     return con
 
+
 def run(sql: str) -> pd.DataFrame:
     return get_con().execute(sql).df()
 
+
 def run_val(sql: str):
     return get_con().execute(sql).fetchone()[0]
+
 
 def col_exists(col: str) -> bool:
     try:
@@ -126,6 +149,7 @@ def col_exists(col: str) -> bool:
         return True
     except Exception:
         return False
+
 
 def safe_col(key: str):
     c = COL.get(key, key)
