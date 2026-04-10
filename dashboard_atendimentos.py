@@ -289,7 +289,7 @@ with aba_reg:
             cols_h = [c for c in [c_data, c_servico, c_unidade, c_quantia, c_login, c_categoria] if c]
             df_hist = run(f'SELECT {", ".join([f"{chr(34)}{c}{chr(34)}" for c in cols_h])} FROM dados WHERE CAST("{c_cpf}" AS VARCHAR) = \'{cpf_sel}\'')
             st.markdown("##### Histórico de serviços")
-            st.dataframe(df_hist, width="stretch", hide_index=True)
+            st.dataframe(df_hist, use_container_width=True, hide_index=True)
 
             if c_servico:
                 svc_c = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados WHERE CAST("{c_cpf}" AS VARCHAR) = \'{cpf_sel}\' GROUP BY "{c_servico}" ORDER BY Qtd DESC')
@@ -298,7 +298,7 @@ with aba_reg:
                              color_continuous_scale="Blues", text="Qtd")
                 fig.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                 fig.update_traces(textposition="outside")
-                st.plotly_chart(fig, width="stretch")
+                st.plotly_chart(fig, use_container_width=True)
 
 # ─────────────────────────────────────
 # ABA 2 — GRÁFICOS
@@ -315,7 +315,7 @@ with aba_graf:
                               color="Qtd", color_continuous_scale="Teal", text="Qtd")
                 fig1.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                 fig1.update_traces(textposition="outside")
-                st.plotly_chart(fig1, width="stretch")
+                st.plotly_chart(fig1, use_container_width=True)
         with g2:
             if c_unidade:
                 d = run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_unidade}" ORDER BY Qtd DESC')
@@ -323,7 +323,7 @@ with aba_graf:
                               color="Qtd", color_continuous_scale="Purples", text="Qtd")
                 fig2.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                 fig2.update_traces(textposition="outside")
-                st.plotly_chart(fig2, width="stretch")
+                st.plotly_chart(fig2, use_container_width=True)
 
         g3, g4 = st.columns(2)
         with g3:
@@ -334,7 +334,7 @@ with aba_graf:
                                   color="Qtd", color_continuous_scale="Oranges", text="Qtd")
                     fig3.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                     fig3.update_traces(textposition="outside")
-                    st.plotly_chart(fig3, width="stretch")
+                    st.plotly_chart(fig3, use_container_width=True)
                 except Exception:
                     st.caption("Gráfico de atendentes indisponível.")
         with g4:
@@ -344,7 +344,7 @@ with aba_graf:
                     if not d.empty:
                         fig4 = px.line(d, x="Mes", y="Qtd", title="Evolução mensal", markers=True)
                         fig4.update_layout(xaxis_title="Mês", yaxis_title="Atendimentos")
-                        st.plotly_chart(fig4, width="stretch")
+                        st.plotly_chart(fig4, use_container_width=True)
                 except Exception:
                     st.caption("Gráfico de evolução indisponível.")
 
@@ -354,7 +354,7 @@ with aba_graf:
             pivot = d.pivot(index="Unidade", columns="Servico", values="Qtd").fillna(0)
             fig5 = px.imshow(pivot, text_auto=True, color_continuous_scale="Blues",
                              title="Atendimentos por unidade e serviço")
-            st.plotly_chart(fig5, width="stretch")
+            st.plotly_chart(fig5, use_container_width=True)
 
 # ─────────────────────────────────────
 # ABA 3 — ATENDENTES
@@ -382,17 +382,17 @@ with aba_at:
                                     color="Qtd", color_continuous_scale="Teal", text="Qtd")
                     fig_a1.update_layout(coloraxis_showscale=False, yaxis_title=None)
                     fig_a1.update_traces(textposition="outside")
-                    st.plotly_chart(fig_a1, width="stretch")
+                    st.plotly_chart(fig_a1, use_container_width=True)
             with cr:
                 if c_unidade:
                     d = run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Qtd FROM dados {w_at} GROUP BY "{c_unidade}"')
                     fig_a2 = px.pie(d, names="Unidade", values="Qtd", title="Por unidade")
-                    st.plotly_chart(fig_a2, width="stretch")
+                    st.plotly_chart(fig_a2, use_container_width=True)
 
             cols_at = [c for c in [c_nome, c_cpf, c_servico, c_data, c_unidade] if c]
             df_at = run(f'SELECT {", ".join([f"{chr(34)}{c}{chr(34)}" for c in cols_at])} FROM dados {w_at}')
             st.markdown("##### Cidadãos atendidos")
-            st.dataframe(df_at, width="stretch", hide_index=True)
+            st.dataframe(df_at, use_container_width=True, hide_index=True)
 
 # ─────────────────────────────────────
 # ABA 4 — EXPORTAR
@@ -404,7 +404,7 @@ with aba_exp:
     with cx1:
         df_exp = run(f"SELECT * FROM dados {where_sql}")
         csv_b = df_exp.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-        st.download_button("⬇️ Baixar CSV", csv_b, "atendimentos.csv", "text/csv", width="stretch")
+        st.download_button("⬇️ Baixar CSV", csv_b, "atendimentos.csv", "text/csv", use_container_width=True)
     with cx2:
         out = io.BytesIO()
         with pd.ExcelWriter(out, engine="openpyxl") as writer:
@@ -416,4 +416,4 @@ with aba_exp:
             if c_servico:
                 run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Total FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Total DESC').to_excel(writer, index=False, sheet_name="Por Serviço")
         st.download_button("⬇️ Baixar Excel com resumos", out.getvalue(), "atendimentos.xlsx",
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", width="stretch")
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
