@@ -223,11 +223,20 @@ c_nasc     = safe_col("nascimento")
 c_codigo   = safe_col("codigo")
 c_quantia  = safe_col("quantia")
 
-def opts_db(col, label_all):
+def esc(v: str) -> str:
+    """Escapa aspas simples para uso seguro em SQL."""
+    return str(v).replace("'", "''")
+
+@st.cache_data(ttl=300, show_spinner=False)
+def opts_db_cached(col, label_all, _cache_key):
     if not col:
         return [label_all]
-    vals = run(f'SELECT DISTINCT "{col}" FROM dados WHERE "{col}" IS NOT NULL ORDER BY "{col}"')[col].tolist()
+    vals = run(f'SELECT DISTINCT "{col}" FROM dados WHERE "{col}" IS NOT NULL ORDER BY "{col}" LIMIT 500')[col].tolist()
     return [label_all] + [str(v) for v in vals]
+
+def opts_db(col, label_all):
+    cache_key = st.session_state.get("last_file", "")
+    return opts_db_cached(col, label_all, cache_key)
 
 # ══════════════════════════════════════════════
 # FILTROS
@@ -258,10 +267,10 @@ if search:
     if c_nome: parts.append(f"LOWER(CAST(\"{c_nome}\" AS VARCHAR)) LIKE '%{search.lower()}%'")
     if c_cpf:  parts.append(f"CAST(\"{c_cpf}\" AS VARCHAR) LIKE '%{search}%'")
     if parts:  wheres.append(f"({' OR '.join(parts)})")
-if f_unidade   != "Todas" and c_unidade:   wheres.append(f'"{c_unidade}" = \'{f_unidade}\'')
-if f_servico   != "Todos" and c_servico:   wheres.append(f'"{c_servico}" = \'{f_servico}\'')
-if f_categoria != "Todas" and c_categoria: wheres.append(f'"{c_categoria}" = \'{f_categoria}\'')
-if f_login     != "Todos" and c_login:     wheres.append(f'"{c_login}" = \'{f_login}\'')
+if f_unidade   != "Todas" and c_unidade:   wheres.append(f'"{c_unidade}" = \'{esc(f_unidade)}\'')
+if f_servico   != "Todos" and c_servico:   wheres.append(f'"{c_servico}" = \'{esc(f_servico)}\'')
+if f_categoria != "Todas" and c_categoria: wheres.append(f'"{c_categoria}" = \'{esc(f_categoria)}\'')
+if f_login     != "Todos" and c_login:     wheres.append(f'"{c_login}" = \'{esc(f_login)}\'')
 if f_data and len(f_data) == 2 and c_data:
     wheres.append(f"CAST(\"{c_data}\" AS DATE) BETWEEN '{f_data[0]}' AND '{f_data[1]}'")
 
@@ -300,9 +309,16 @@ with aba_reg:
     st.subheader("Registros de atendimento")
     cols_tab = [c for c in [c_codigo, c_nome, c_cpf, c_unidade, c_servico, c_data, c_login, c_categoria] if c]
     cols_sel = ", ".join([f'"{c}"' for c in cols_tab])
-    df_tab = run(f"SELECT {cols_sel} FROM dados {where_sql} LIMIT 500")
-    if total_f > 500:
-        st.caption(f"⚠️ Exibindo 500 de {total_f:,}. Use os filtros para refinar.")
+
+    PAGE_SIZE = 100
+    total_pages = max(1, (total_f + PAGE_SIZE - 1) // PAGE_SIZE)
+    pg_col, _ = st.columns([1, 3])
+    with pg_col:
+        page = st.number_input("Página", min_value=1, max_value=total_pages, value=1, step=1)
+    offset = (page - 1) * PAGE_SIZE
+    st.caption(f"Página {page} de {total_pages} — {total_f:,} registros no total")
+
+    df_tab = run(f"SELECT {cols_sel} FROM dados {where_sql} LIMIT {PAGE_SIZE} OFFSET {offset}")
 
     evento = st.dataframe(df_tab, use_container_width=True, hide_index=True,
                           on_select="rerun", selection_mode="single-row")
@@ -452,9 +468,11 @@ with aba_at:
 with aba_exp:
     st.subheader("Exportar dados filtrados")
     st.caption(f"{total_f:,} registros com os filtros atuais.")
+    EXPORT_LIMIT = 50_000
+    st.info(f"Exportação limitada a {EXPORT_LIMIT:,} registros por vez para evitar travamento.")
     cx1, cx2 = st.columns(2)
     with cx1:
-        df_exp = run(f"SELECT * FROM dados {where_sql}")
+        df_exp = run(f"SELECT * FROM dados {where_sql} LIMIT {EXPORT_LIMIT}")
         csv_b = df_exp.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
         st.download_button("⬇️ Baixar CSV", csv_b, "atendimentos.csv", "text/csv", use_container_width=True)
     with cx2:
