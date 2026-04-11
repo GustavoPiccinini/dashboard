@@ -158,11 +158,10 @@ def safe_col(key: str):
 # ══════════════════════════════════════════════
 # AUTENTICAÇÃO
 # ══════════════════════════════════════════════
-SENHA_LOCAL = "assistencia"
 try:
     senha_correta = st.secrets["SENHA_DASHBOARD"]
 except Exception:
-    senha_correta = SENHA_LOCAL
+    senha_correta = None  # sem senha local — configure nos Secrets do Streamlit Cloud
 
 st.sidebar.title("🔒 Acesso")
 senha_digitada = st.sidebar.text_input("Senha de acesso", type="password")
@@ -284,17 +283,39 @@ st.caption("Clique em qualquer linha para ver o perfil completo.")
 st.markdown("---")
 
 total_f  = run_val(f"SELECT COUNT(*) FROM dados {where_sql}")
-cpfs_f   = run_val(f'SELECT COUNT(DISTINCT "{c_cpf}") FROM dados {where_sql}')     if c_cpf     else "—"
-uni_f    = run_val(f'SELECT COUNT(DISTINCT "{c_unidade}") FROM dados {where_sql}') if c_unidade else "—"
-svc_f    = run_val(f'SELECT COUNT(DISTINCT "{c_servico}") FROM dados {where_sql}') if c_servico else "—"
-login_f  = run_val(f'SELECT COUNT(DISTINCT "{c_login}") FROM dados {where_sql}')   if c_login   else "—"
+cpfs_f   = run_val(f'SELECT COUNT(DISTINCT "{c_cpf}") FROM dados {where_sql}')     if c_cpf     else 0
+uni_f    = run_val(f'SELECT COUNT(DISTINCT "{c_unidade}") FROM dados {where_sql}') if c_unidade else 0
+svc_f    = run_val(f'SELECT COUNT(DISTINCT "{c_servico}") FROM dados {where_sql}') if c_servico else 0
+login_f  = run_val(f'SELECT COUNT(DISTINCT "{c_login}") FROM dados {where_sql}')   if c_login   else 0
 
-m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("Total atendimentos", f"{total_f:,}")
-m2.metric("CPFs distintos",     f"{cpfs_f:,}"  if isinstance(cpfs_f,  int) else cpfs_f)
-m3.metric("Unidades ativas",    f"{uni_f:,}"   if isinstance(uni_f,   int) else uni_f)
-m4.metric("Tipos de serviço",   f"{svc_f:,}"   if isinstance(svc_f,   int) else svc_f)
-m5.metric("Atendentes ativos",  f"{login_f:,}" if isinstance(login_f, int) else login_f)
+# Taxa de retorno: CPFs com mais de 1 atendimento
+taxa_retorno = 0
+if c_cpf:
+    try:
+        cpfs_multi = run_val(f'SELECT COUNT(*) FROM (SELECT "{c_cpf}", COUNT(*) AS n FROM dados {where_sql} GROUP BY "{c_cpf}" HAVING n > 1)')
+        taxa_retorno = round((cpfs_multi / cpfs_f * 100), 1) if cpfs_f > 0 else 0
+    except Exception:
+        pass
+
+# Comparativo mês atual vs anterior
+delta_txt = ""
+if c_data:
+    try:
+        mes_atual = run_val(f'''SELECT COUNT(*) FROM dados {where_sql} {"AND" if where_sql else "WHERE"} CAST("{c_data}" AS DATE) >= DATE_TRUNC('month', CURRENT_DATE)''')
+        mes_ant   = run_val(f'''SELECT COUNT(*) FROM dados {where_sql} {"AND" if where_sql else "WHERE"} CAST("{c_data}" AS DATE) >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL 1 MONTH AND CAST("{c_data}" AS DATE) < DATE_TRUNC('month', CURRENT_DATE)''')
+        if mes_ant > 0:
+            delta_pct = round(((mes_atual - mes_ant) / mes_ant) * 100, 1)
+            delta_txt = f"{delta_pct:+.1f}% vs mês anterior"
+    except Exception:
+        pass
+
+m1, m2, m3, m4, m5, m6 = st.columns(6)
+m1.metric("Total atendimentos", f"{total_f:,}", delta_txt if delta_txt else None)
+m2.metric("CPFs distintos",     f"{cpfs_f:,}")
+m3.metric("Unidades ativas",    f"{uni_f:,}")
+m4.metric("Tipos de serviço",   f"{svc_f:,}")
+m5.metric("Atendentes ativos",  f"{login_f:,}")
+m6.metric("Taxa de retorno",    f"{taxa_retorno}%", help="CPFs com mais de 1 atendimento")
 st.markdown("---")
 
 # ══════════════════════════════════════════════
@@ -382,8 +403,8 @@ with aba_graf:
         with g3:
             if c_login:
                 try:
-                    d = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Qtd DESC')
-                    fig3 = px.bar(d, x="Qtd", y="Atendente", orientation="h", title="Por atendente",
+                    d = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Qtd DESC LIMIT 10')
+                    fig3 = px.bar(d, x="Qtd", y="Atendente", orientation="h", title="Top 10 atendentes",
                                   color="Qtd", color_continuous_scale="Oranges", text="Qtd")
                     fig3.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                     fig3.update_traces(textposition="outside")
@@ -393,22 +414,19 @@ with aba_graf:
         with g4:
             if c_data:
                 try:
-                    if where_sql.strip():
-                        d = run(f'''
+                    w_data = f"{where_sql} AND" if where_sql.strip() else "WHERE"
+                    d = run(f'''
                         SELECT STRFTIME(CAST("{c_data}" AS DATE), '%Y-%m') AS Mes, COUNT(*) AS Qtd
-                        FROM dados {where_sql} AND "{c_data}" IS NOT NULL
+                        FROM dados {w_data} "{c_data}" IS NOT NULL
                         GROUP BY Mes ORDER BY Mes
-                        ''')
-                    else:
-                        d = run(f'''
-                        SELECT STRFTIME(CAST("{c_data}" AS DATE), '%Y-%m') AS Mes, COUNT(*) AS Qtd
-                        FROM dados
-                        WHERE "{c_data}" IS NOT NULL
-                        GROUP BY Mes ORDER BY Mes
-                        ''')
+                    ''')
                     if not d.empty:
-                        fig4 = px.line(d, x="Mes", y="Qtd", title="Evolução mensal", markers=True)
-                        fig4.update_layout(xaxis_title="Mês", yaxis_title="Atendimentos")
+                        # Destacar últimos 12 meses
+                        d = d.tail(24)
+                        fig4 = px.line(d, x="Mes", y="Qtd", title="Evolução mensal (últimos 24 meses)", markers=True)
+                        fig4.update_layout(xaxis_title="Mês", yaxis_title="Atendimentos",
+                                           xaxis_tickangle=-45)
+                        fig4.update_traces(line_color="#1f77b4", line_width=2)
                         st.plotly_chart(fig4, use_container_width=True)
                 except Exception:
                     st.caption("Gráfico de evolução indisponível.")
@@ -420,6 +438,22 @@ with aba_graf:
             fig5 = px.imshow(pivot, text_auto=True, color_continuous_scale="Blues",
                              title="Atendimentos por unidade e serviço")
             st.plotly_chart(fig5, use_container_width=True)
+
+        # Ranking top serviços
+        if c_servico and c_cpf:
+            st.markdown("##### 🏆 Ranking — Serviços mais demandados")
+            rank_cols = st.columns(2)
+            with rank_cols[0]:
+                top_svc = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Total, COUNT(DISTINCT "{c_cpf}") AS CPFs_unicos FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Total DESC LIMIT 10')
+                st.dataframe(top_svc, use_container_width=True, hide_index=True)
+            with rank_cols[1]:
+                # CPFs com mais atendimentos
+                if c_nome:
+                    top_cpf = run(f'SELECT "{c_nome}" AS Nome, "{c_cpf}" AS CPF, COUNT(*) AS Atendimentos FROM dados {where_sql} GROUP BY "{c_cpf}", "{c_nome}" ORDER BY Atendimentos DESC LIMIT 10')
+                else:
+                    top_cpf = run(f'SELECT "{c_cpf}" AS CPF, COUNT(*) AS Atendimentos FROM dados {where_sql} GROUP BY "{c_cpf}" ORDER BY Atendimentos DESC LIMIT 10')
+                st.markdown("**Top 10 CPFs com mais atendimentos**")
+                st.dataframe(top_cpf, use_container_width=True, hide_index=True)
 
 # ─────────────────────────────────────
 # ABA 3 — ATENDENTES
