@@ -6,7 +6,7 @@ import duckdb
 import pandas as pd
 import plotly.express as px
 
-st.set_page_config(page_title="Dashboard de Atendimentos", page_icon="📋", layout="wide")
+st.set_page_config(page_title="Relatorio de Atendimentos", page_icon="📋", layout="wide")
 
 st.markdown("""
 <style>
@@ -167,7 +167,7 @@ st.sidebar.title("🔒 Acesso")
 senha_digitada = st.sidebar.text_input("Senha de acesso", type="password")
 if senha_digitada != senha_correta:
     st.sidebar.warning("Digite a senha para acessar.")
-    st.title("📋 Dashboard de Atendimentos")
+    st.title("📋 Relatorio de Atendimentos")
     st.info("🔒 Insira a senha na barra lateral.")
     st.stop()
 st.sidebar.success("✅ Acesso liberado!")
@@ -203,7 +203,7 @@ if uploaded:
         st.stop()
 else:
     st.sidebar.info("💡 Faça upload do arquivo para começar.")
-    st.title("📋 Dashboard de Atendimentos")
+    st.title("📋 Relatorio de Atendimentos")
     st.info("📂 Faça upload do seu arquivo CSV ou Excel na barra lateral.")
     st.stop()
 
@@ -278,7 +278,7 @@ where_sql = ("WHERE " + " AND ".join(wheres)) if wheres else ""
 # ══════════════════════════════════════════════
 # MÉTRICAS
 # ══════════════════════════════════════════════
-st.title("📋 Dashboard de Atendimentos")
+st.title("📋 Relatorio de Atendimentos")
 st.caption("Clique em qualquer linha para ver o perfil completo.")
 st.markdown("---")
 
@@ -312,9 +312,9 @@ if c_data:
 m1, m2, m3, m4, m5, m6 = st.columns(6)
 m1.metric("Total atendimentos", f"{total_f:,}", delta_txt if delta_txt else None)
 m2.metric("CPFs distintos",     f"{cpfs_f:,}")
-m3.metric("Unidades ativas",    f"{uni_f:,}")
+m3.metric("Unidades",    f"{uni_f:,}")
 m4.metric("Tipos de serviço",   f"{svc_f:,}")
-m5.metric("Atendentes ativos",  f"{login_f:,}")
+m5.metric("Atendentes ",  f"{login_f:,}")
 m6.metric("Taxa de retorno",    f"{taxa_retorno}%", help="CPFs com mais de 1 atendimento")
 st.markdown("---")
 
@@ -441,7 +441,7 @@ with aba_graf:
 
         # Ranking top serviços
         if c_servico and c_cpf:
-            st.markdown("##### 🏆 Ranking — Serviços mais demandados")
+            st.markdown("##### 🏆 Ranking — Serviços mais procurados")
             rank_cols = st.columns(2)
             with rank_cols[0]:
                 top_svc = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Total, COUNT(DISTINCT "{c_cpf}") AS CPFs_unicos FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Total DESC LIMIT 10')
@@ -503,21 +503,17 @@ with aba_exp:
     st.subheader("Exportar dados filtrados")
     st.caption(f"{total_f:,} registros com os filtros atuais.")
     EXPORT_LIMIT = 50_000
-    st.info(f"Exportação limitada a {EXPORT_LIMIT:,} registros por vez para evitar travamento.")
-    cx1, cx2 = st.columns(2)
-    with cx1:
-        df_exp = run(f"SELECT * FROM dados {where_sql} LIMIT {EXPORT_LIMIT}")
-        csv_b = df_exp.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-        st.download_button("⬇️ Baixar CSV", csv_b, "atendimentos.csv", "text/csv", use_container_width=True)
-    with cx2:
-        out = io.BytesIO()
-        with pd.ExcelWriter(out, engine="openpyxl") as writer:
-            df_exp.to_excel(writer, index=False, sheet_name="Atendimentos")
-            if c_login:
-                run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Total FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Total DESC').to_excel(writer, index=False, sheet_name="Por Atendente")
-            if c_unidade:
-                run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Total FROM dados {where_sql} GROUP BY "{c_unidade}" ORDER BY Total DESC').to_excel(writer, index=False, sheet_name="Por Unidade")
-            if c_servico:
-                run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Total FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Total DESC').to_excel(writer, index=False, sheet_name="Por Serviço")
-        st.download_button("⬇️ Baixar Excel com resumos", out.getvalue(), "atendimentos.xlsx",
-                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+    st.info(f"Exportação limitada a {EXPORT_LIMIT:,} registros por vez.")
+    df_exp = run(f"SELECT * FROM dados {where_sql} LIMIT {EXPORT_LIMIT}")
+    out = io.BytesIO()
+    with pd.ExcelWriter(out, engine="openpyxl") as writer:
+        df_exp.to_excel(writer, index=False, sheet_name="Atendimentos")
+        if c_login:
+            run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Total FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Total DESC').to_excel(writer, index=False, sheet_name="Por Atendente")
+        if c_unidade:
+            run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Total FROM dados {where_sql} GROUP BY "{c_unidade}" ORDER BY Total DESC').to_excel(writer, index=False, sheet_name="Por Unidade")
+        if c_servico:
+            run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Total FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Total DESC').to_excel(writer, index=False, sheet_name="Por Serviço")
+    st.download_button("⬇️ Baixar Excel com resumos", out.getvalue(), "atendimentos.xlsx",
+                       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                       use_container_width=True)
