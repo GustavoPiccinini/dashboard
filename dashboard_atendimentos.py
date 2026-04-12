@@ -226,6 +226,10 @@ def esc(v: str) -> str:
     """Escapa aspas simples para uso seguro em SQL."""
     return str(v).replace("'", "''")
 
+def altura_grafico(n_itens: int, min_h: int = 200, por_item: int = 40) -> int:
+    """Calcula altura proporcional ao número de itens."""
+    return max(min_h, min(n_itens * por_item + 80, 600))
+
 @st.cache_data(ttl=300, show_spinner=False)
 def opts_db_cached(col, label_all, _cache_key):
     if not col:
@@ -351,7 +355,7 @@ with aba_reg:
         if cpf_sel:
             st.markdown("---")
             st.subheader(f"👤 Perfil: {row.get(c_nome, 'Cidadão')}")
-            total_cpf = run_val(f'SELECT COUNT(*) FROM dados WHERE "{c_cpf}" = \'{cpf_sel}\'')
+            total_cpf = run_val("SELECT COUNT(*) FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_sel + "'")
             pa, pb, pc, pd_ = st.columns(4)
             pa.metric("CPF",           cpf_sel)
             pb.metric("NIS",           str(row.get(c_nis,  "—")))
@@ -359,14 +363,14 @@ with aba_reg:
             pd_.metric("Atendimentos", total_cpf)
 
             cols_h = [c for c in [c_data, c_servico, c_unidade, c_quantia, c_login, c_categoria] if c]
-            df_hist = run(f'''SELECT {", ".join([f"{chr(34)}{c}{chr(34)}" for c in cols_h])} FROM dados WHERE "{c_cpf}" = '{cpf_sel}'LIMIT 500''') 
+            df_hist = run("SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_h]) + " FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_sel + "' LIMIT 500") 
             if len(df_hist) == 500:
                 st.caption(f"⚠️ Exibindo 500 de {total_cpf:,} atendimentos para este CPF.")    
             st.markdown("##### Histórico de serviços")
             st.dataframe(df_hist, use_container_width=True, hide_index=True)
 
             if c_servico:
-                svc_c = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados WHERE "{c_cpf}" = \'{cpf_sel}\' GROUP BY "{c_servico}" ORDER BY Qtd DESC')
+                svc_c = run("SELECT " + chr(34) + c_servico + chr(34) + " AS Servico, COUNT(*) AS Qtd FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_sel + "' GROUP BY " + chr(34) + c_servico + chr(34) + " ORDER BY Qtd DESC")
                 fig = px.bar(svc_c, x="Qtd", y="Servico", orientation="h",
                              title="Serviços recebidos", color="Qtd",
                              color_continuous_scale="Blues", text="Qtd")
@@ -386,15 +390,17 @@ with aba_graf:
             if c_servico:
                 d = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Qtd DESC')
                 fig1 = px.bar(d, x="Qtd", y="Servico", orientation="h", title="Por tipo de serviço",
-                              color="Qtd", color_continuous_scale="Purples", text="Qtd")
+                              color="Qtd", color_continuous_scale="Teal", text="Qtd",
+                              height=altura_grafico(len(d)))
                 fig1.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                 fig1.update_traces(textposition="outside")
                 st.plotly_chart(fig1, use_container_width=True)
         with g2:
             if c_unidade:
-                d = run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_unidade}" ORDER BY Qtd ASC')
+                d = run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_unidade}" ORDER BY Qtd DESC')
                 fig2 = px.bar(d, x="Qtd", y="Unidade", orientation="h", title="Por unidade",
-                              color="Qtd", color_continuous_scale="Purples", text="Qtd")
+                              color="Qtd", color_continuous_scale="Purples", text="Qtd",
+                              height=altura_grafico(len(d)))
                 fig2.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                 fig2.update_traces(textposition="outside")
                 st.plotly_chart(fig2, use_container_width=True)
@@ -405,7 +411,8 @@ with aba_graf:
                 try:
                     d = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Qtd DESC LIMIT 10')
                     fig3 = px.bar(d, x="Qtd", y="Atendente", orientation="h", title="Top 10 atendentes",
-                                  color="Qtd", color_continuous_scale="Oranges", text="Qtd")
+                                  color="Qtd", color_continuous_scale="Oranges", text="Qtd",
+                                  height=altura_grafico(len(d)))
                     fig3.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                     fig3.update_traces(textposition="outside")
                     st.plotly_chart(fig3, use_container_width=True)
@@ -443,7 +450,8 @@ with aba_graf:
                 svc_safe = esc(svc_nome)
                 st.markdown(f"**Registros para: {svc_nome}**")
                 cols_svc = [c for c in [c_nome, c_cpf, c_unidade, c_data, c_login] if c]
-                df_svc = run(f'SELECT {", ".join([f"{chr(34)}{c}{chr(34)}" for c in cols_svc])} FROM dados {where_sql} {"AND" if where_sql else "WHERE"} "{c_servico}" = \'{svc_safe}\' LIMIT 200')
+                and_or = "AND" if where_sql else "WHERE"
+                df_svc = run("SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_svc]) + " FROM dados " + where_sql + " " + and_or + " " + chr(34) + c_servico + chr(34) + " = '" + svc_safe + "' LIMIT 200")
                 st.dataframe(df_svc, use_container_width=True, hide_index=True)
 
             st.markdown("##### 👤 Top 10 CPFs com mais atendimentos")
@@ -458,10 +466,10 @@ with aba_graf:
                 cpf_click = top_cpf.iloc[cpf_sel_rows[0]]["CPF"]
                 cpf_safe = esc(str(cpf_click))
                 nome_click = top_cpf.iloc[cpf_sel_rows[0]].get("Nome", cpf_click)
-                total_click = run_val(f'SELECT COUNT(*) FROM dados WHERE "{c_cpf}" = \'{cpf_safe}\'')
+                total_click = run_val("SELECT COUNT(*) FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_safe + "'")
                 st.markdown(f"**Histórico: {nome_click} — {total_click:,} atendimentos**")
                 cols_h = [c for c in [c_data, c_servico, c_unidade, c_login, c_categoria] if c]
-                df_click = run(f'SELECT {", ".join([f"{chr(34)}{c}{chr(34)}" for c in cols_h])} FROM dados WHERE "{c_cpf}" = \'{cpf_safe}\' ORDER BY "{c_data}" DESC LIMIT 200')
+                df_click = run("SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_h]) + " FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_safe + "' ORDER BY " + chr(34) + str(c_data or "") + chr(34) + " DESC LIMIT 200")
                 st.dataframe(df_click, use_container_width=True, hide_index=True)
 
 # ─────────────────────────────────────
@@ -516,7 +524,8 @@ with aba_at:
             st.markdown("##### Comparativo entre atendentes")
             d_comp = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Total FROM dados {w_at} GROUP BY "{c_login}" ORDER BY Total DESC')
             fig_comp = px.bar(d_comp, x="Atendente", y="Total", color="Atendente",
-                              text="Total", title="Total por atendente")
+                              text="Total", title="Total por atendente",
+                              height=altura_grafico(len(d_comp), por_item=60))
             fig_comp.update_layout(showlegend=False, xaxis_title=None)
             fig_comp.update_traces(textposition="outside")
             st.plotly_chart(fig_comp, use_container_width=True)
@@ -526,7 +535,8 @@ with aba_at:
             st.markdown("##### Comparativo entre unidades")
             d_uni_comp = run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Total FROM dados {w_at} GROUP BY "{c_unidade}" ORDER BY Total DESC')
             fig_uni = px.bar(d_uni_comp, x="Unidade", y="Total", color="Unidade",
-                             text="Total", title="Total por unidade")
+                             text="Total", title="Total por unidade",
+                             height=altura_grafico(len(d_uni_comp), por_item=60))
             fig_uni.update_layout(showlegend=False, xaxis_title=None)
             fig_uni.update_traces(textposition="outside")
             st.plotly_chart(fig_uni, use_container_width=True)
@@ -538,7 +548,8 @@ with aba_at:
                 d_svc = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados {w_at} GROUP BY "{c_servico}" ORDER BY Qtd DESC LIMIT 10')
                 fig_s = px.bar(d_svc, x="Qtd", y="Servico", orientation="h",
                                title="Serviços realizados (top 10)",
-                               color="Qtd", color_continuous_scale="Teal", text="Qtd")
+                               color="Qtd", color_continuous_scale="Teal", text="Qtd",
+                               height=altura_grafico(len(d_svc)))
                 fig_s.update_layout(coloraxis_showscale=False, yaxis_title=None)
                 fig_s.update_traces(textposition="outside")
                 st.plotly_chart(fig_s, use_container_width=True)
@@ -553,12 +564,44 @@ with aba_at:
                 fig_l = px.pie(d_log, names="Atendente", values="Qtd", title="Distribuição por atendente")
                 st.plotly_chart(fig_l, use_container_width=True)
 
-        # ── Tabela ──
+        # ── Tabela clicável ──
         cols_at = [c for c in [c_nome, c_cpf, c_login, c_servico, c_data, c_unidade] if c]
         col_sel = ", ".join([f'"{c}"' for c in cols_at])
         df_at = run(f"SELECT {col_sel} FROM dados {w_at} LIMIT 500")
-        st.markdown("##### Registros")
-        st.dataframe(df_at, use_container_width=True, hide_index=True)
+        st.markdown("##### Registros — clique em uma linha para ver o perfil do cidadão")
+        ev_at = st.dataframe(df_at, use_container_width=True, hide_index=True,
+                             on_select="rerun", selection_mode="single-row")
+
+        sel_at = ev_at.selection.rows if hasattr(ev_at, "selection") else []
+        if sel_at and c_cpf:
+            row_at = df_at.iloc[sel_at[0]]
+            cpf_at_sel = str(row_at.get(c_cpf, "")).replace("'", "''")
+            if cpf_at_sel:
+                st.markdown("---")
+                nome_at_sel = row_at.get(c_nome, "Cidadão")
+                st.subheader(f"👤 Perfil: {nome_at_sel}")
+
+                total_cpf_at = run_val("SELECT COUNT(*) FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_at_sel + "'")
+                pa, pb, pc, pd_ = st.columns(4)
+                pa.metric("CPF",           cpf_at_sel)
+                pb.metric("NIS",           str(row_at.get(c_nis,  "—")))
+                pc.metric("Nascimento",    str(row_at.get(c_nasc, "—")))
+                pd_.metric("Atendimentos", f"{total_cpf_at:,}")
+
+                cols_h = [c for c in [c_data, c_servico, c_unidade, c_quantia, c_login, c_categoria] if c]
+                col_h_sel = ", ".join([f'"{c}"' for c in cols_h])
+                df_hist_at = run("SELECT " + col_h_sel + " FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_at_sel + "' ORDER BY " + chr(34) + str(c_data or "") + chr(34) + " DESC LIMIT 500")
+                st.markdown("##### Histórico completo de serviços")
+                st.dataframe(df_hist_at, use_container_width=True, hide_index=True)
+
+                if c_servico and not df_hist_at.empty:
+                    svc_at_c = run("SELECT " + chr(34) + c_servico + chr(34) + " AS Servico, COUNT(*) AS Qtd FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_at_sel + "' GROUP BY " + chr(34) + c_servico + chr(34) + " ORDER BY Qtd DESC")
+                    fig_h = px.bar(svc_at_c, x="Qtd", y="Servico", orientation="h",
+                                   title="Serviços recebidos", color="Qtd",
+                                   color_continuous_scale="Blues", text="Qtd")
+                    fig_h.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
+                    fig_h.update_traces(textposition="outside")
+                    st.plotly_chart(fig_h, use_container_width=True)
     else:
         st.info("Selecione ao menos um atendente ou uma unidade para ver os dados.")
 
