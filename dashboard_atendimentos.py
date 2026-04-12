@@ -486,9 +486,11 @@ with aba_at:
                 uni_sels = []
 
         if at_sels:
-            wheres_at = [f'"{c_login}" IN ({", ".join([f"\'{esc(a)}\'" for a in at_sels])})']
+            at_lista = ", ".join([f"'{esc(a)}'" for a in at_sels])
+            wheres_at = [f'"{c_login}" IN ({at_lista})']
             if uni_sels and c_unidade:
-                wheres_at.append(f'"{c_unidade}" IN ({", ".join([f"\'{esc(u)}\'" for u in uni_sels])})')
+                uni_lista = ", ".join([f"'{esc(u)}'" for u in uni_sels])
+                wheres_at.append(f'"{c_unidade}" IN ({uni_lista})')
             w_at = "WHERE " + " AND ".join(wheres_at)
 
             a1, a2, a3 = st.columns(3)
