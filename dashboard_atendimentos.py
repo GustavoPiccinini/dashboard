@@ -494,9 +494,12 @@ with aba_at:
             w_at = "WHERE " + " AND ".join(wheres_at)
 
             a1, a2, a3 = st.columns(3)
-            a1.metric("Total atendimentos", f"{run_val(f'SELECT COUNT(*) FROM dados {w_at}'):,}")
-            a2.metric("CPFs atendidos",     f"{run_val(f'SELECT COUNT(DISTINCT \"{c_cpf}\") FROM dados {w_at}'):,}" if c_cpf     else "—")
-            a3.metric("Unidades",           f"{run_val(f'SELECT COUNT(DISTINCT \"{c_unidade}\") FROM dados {w_at}'):,}" if c_unidade else "—")
+            tot_at = run_val(f"SELECT COUNT(*) FROM dados {w_at}")
+            cpf_at = run_val(f"SELECT COUNT(DISTINCT {chr(34)}{c_cpf}{chr(34)}) FROM dados {w_at}") if c_cpf else None
+            uni_at = run_val(f"SELECT COUNT(DISTINCT {chr(34)}{c_unidade}{chr(34)}) FROM dados {w_at}") if c_unidade else None
+            a1.metric("Total atendimentos", f"{tot_at:,}")
+            a2.metric("CPFs atendidos",     f"{cpf_at:,}" if cpf_at is not None else "—")
+            a3.metric("Unidades",           f"{uni_at:,}" if uni_at is not None else "—")
 
             if len(at_sels) > 1:
                 st.markdown("##### Comparativo entre atendentes")
