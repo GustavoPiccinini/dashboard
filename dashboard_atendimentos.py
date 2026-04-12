@@ -384,7 +384,7 @@ with aba_graf:
         g1, g2 = st.columns(2)
         with g1:
             if c_servico:
-                d = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Qtd DESC')
+                d = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Qtd ASC')
                 fig1 = px.bar(d, x="Qtd", y="Servico", orientation="h", title="Por tipo de serviço",
                               color="Qtd", color_continuous_scale="Teal", text="Qtd")
                 fig1.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
@@ -392,7 +392,7 @@ with aba_graf:
                 st.plotly_chart(fig1, use_container_width=True)
         with g2:
             if c_unidade:
-                d = run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_unidade}" ORDER BY Qtd DESC')
+                d = run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_unidade}" ORDER BY Qtd ASC')
                 fig2 = px.bar(d, x="Qtd", y="Unidade", orientation="h", title="Por unidade",
                               color="Qtd", color_continuous_scale="Purples", text="Qtd")
                 fig2.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
@@ -403,9 +403,9 @@ with aba_graf:
         with g3:
             if c_login:
                 try:
-                    d = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Qtd DESC LIMIT 10')
+                    d = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Qtd ASC LIMIT 10')
                     fig3 = px.bar(d, x="Qtd", y="Atendente", orientation="h", title="Top 10 atendentes",
-                                  color="Qtd", color_continuous_scale="Oranges", text="Qtd")
+                                  color="Qtd", color_continuous_scale="Purples", text="Qtd")
                     fig3.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                     fig3.update_traces(textposition="outside")
                     st.plotly_chart(fig3, use_container_width=True)
