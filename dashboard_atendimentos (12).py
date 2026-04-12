@@ -384,9 +384,9 @@ with aba_graf:
         g1, g2 = st.columns(2)
         with g1:
             if c_servico:
-                d = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Qtd ASC')
+                d = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Qtd DESC')
                 fig1 = px.bar(d, x="Qtd", y="Servico", orientation="h", title="Por tipo de serviço",
-                              color="Qtd", color_continuous_scale="Teal", text="Qtd")
+                              color="Qtd", color_continuous_scale="Purples", text="Qtd")
                 fig1.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                 fig1.update_traces(textposition="outside")
                 st.plotly_chart(fig1, use_container_width=True)
@@ -403,9 +403,9 @@ with aba_graf:
         with g3:
             if c_login:
                 try:
-                    d = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Qtd ASC LIMIT 10')
+                    d = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Qtd DESC LIMIT 10')
                     fig3 = px.bar(d, x="Qtd", y="Atendente", orientation="h", title="Top 10 atendentes",
-                                  color="Qtd", color_continuous_scale="Purples", text="Qtd")
+                                  color="Qtd", color_continuous_scale="Oranges", text="Qtd")
                     fig3.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                     fig3.update_traces(textposition="outside")
                     st.plotly_chart(fig3, use_container_width=True)
@@ -465,70 +465,102 @@ with aba_graf:
                 st.dataframe(df_click, use_container_width=True, hide_index=True)
 
 # ─────────────────────────────────────
-# ABA 3 — ATENDENTES
+# ABA 3 — ATENDENTES E UNIDADES
 # ─────────────────────────────────────
 with aba_at:
-    st.subheader("Perfil por atendente")
-    if not c_login:
-        st.warning("Coluna de login não encontrada.")
+    st.subheader("Perfil por atendente e unidade")
+    w_base = f"{where_sql} AND" if where_sql.strip() else "WHERE"
+
+    col_fat, col_funi = st.columns(2)
+    with col_fat:
+        if c_login:
+            atendentes = run(f'SELECT DISTINCT "{c_login}" FROM dados {w_base} "{c_login}" IS NOT NULL ORDER BY "{c_login}"')[c_login].tolist()
+            at_sels = st.multiselect("Selecione atendentes", atendentes)
+        else:
+            at_sels = []
+    with col_funi:
+        if c_unidade:
+            unidades_at = run(f'SELECT DISTINCT "{c_unidade}" FROM dados {w_base} "{c_unidade}" IS NOT NULL ORDER BY "{c_unidade}"')[c_unidade].tolist()
+            uni_sels = st.multiselect("Selecione unidades", unidades_at)
+        else:
+            uni_sels = []
+
+    # Monta WHERE combinado
+    if at_sels or uni_sels:
+        wheres_at = []
+        if at_sels and c_login:
+            at_lista = ", ".join(["'" + esc(a) + "'" for a in at_sels])
+            wheres_at.append(f'"{c_login}" IN ({at_lista})')
+        if uni_sels and c_unidade:
+            uni_lista = ", ".join(["'" + esc(u) + "'" for u in uni_sels])
+            wheres_at.append(f'"{c_unidade}" IN ({uni_lista})')
+        w_at = "WHERE " + " AND ".join(wheres_at)
+
+        # ── Métricas ──
+        tot_at  = run_val(f"SELECT COUNT(*) FROM dados {w_at}")
+        q_cpf   = f'SELECT COUNT(DISTINCT "{c_cpf}") FROM dados {w_at}'
+        q_uni   = f'SELECT COUNT(DISTINCT "{c_unidade}") FROM dados {w_at}'
+        q_svc   = f'SELECT COUNT(DISTINCT "{c_servico}") FROM dados {w_at}'
+        cpf_at  = run_val(q_cpf)  if c_cpf     else None
+        uni_cnt = run_val(q_uni)  if c_unidade else None
+        svc_cnt = run_val(q_svc)  if c_servico else None
+
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Total atendimentos", f"{tot_at:,}")
+        m2.metric("CPFs atendidos",     f"{cpf_at:,}"  if cpf_at  is not None else "—")
+        m3.metric("Unidades",           f"{uni_cnt:,}" if uni_cnt is not None else "—")
+        m4.metric("Tipos de serviço",   f"{svc_cnt:,}" if svc_cnt is not None else "—")
+
+        # ── Comparativo atendentes (se mais de 1 selecionado) ──
+        if c_login and len(at_sels) > 1:
+            st.markdown("##### Comparativo entre atendentes")
+            d_comp = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Total FROM dados {w_at} GROUP BY "{c_login}" ORDER BY Total DESC')
+            fig_comp = px.bar(d_comp, x="Atendente", y="Total", color="Atendente",
+                              text="Total", title="Total por atendente")
+            fig_comp.update_layout(showlegend=False, xaxis_title=None)
+            fig_comp.update_traces(textposition="outside")
+            st.plotly_chart(fig_comp, use_container_width=True)
+
+        # ── Comparativo unidades (se mais de 1 selecionada) ──
+        if c_unidade and len(uni_sels) > 1:
+            st.markdown("##### Comparativo entre unidades")
+            d_uni_comp = run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Total FROM dados {w_at} GROUP BY "{c_unidade}" ORDER BY Total DESC')
+            fig_uni = px.bar(d_uni_comp, x="Unidade", y="Total", color="Unidade",
+                             text="Total", title="Total por unidade")
+            fig_uni.update_layout(showlegend=False, xaxis_title=None)
+            fig_uni.update_traces(textposition="outside")
+            st.plotly_chart(fig_uni, use_container_width=True)
+
+        # ── Gráficos ──
+        gl, gr = st.columns(2)
+        with gl:
+            if c_servico:
+                d_svc = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados {w_at} GROUP BY "{c_servico}" ORDER BY Qtd DESC LIMIT 10')
+                fig_s = px.bar(d_svc, x="Qtd", y="Servico", orientation="h",
+                               title="Serviços realizados (top 10)",
+                               color="Qtd", color_continuous_scale="Teal", text="Qtd")
+                fig_s.update_layout(coloraxis_showscale=False, yaxis_title=None)
+                fig_s.update_traces(textposition="outside")
+                st.plotly_chart(fig_s, use_container_width=True)
+        with gr:
+            if c_unidade and not uni_sels:
+                # Só mostra pizza de unidade se não filtrou por unidade específica
+                d_uni = run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Qtd FROM dados {w_at} GROUP BY "{c_unidade}"')
+                fig_u = px.pie(d_uni, names="Unidade", values="Qtd", title="Distribuição por unidade")
+                st.plotly_chart(fig_u, use_container_width=True)
+            elif c_login and not at_sels:
+                d_log = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Qtd FROM dados {w_at} GROUP BY "{c_login}" ORDER BY Qtd DESC LIMIT 10')
+                fig_l = px.pie(d_log, names="Atendente", values="Qtd", title="Distribuição por atendente")
+                st.plotly_chart(fig_l, use_container_width=True)
+
+        # ── Tabela ──
+        cols_at = [c for c in [c_nome, c_cpf, c_login, c_servico, c_data, c_unidade] if c]
+        col_sel = ", ".join([f'"{c}"' for c in cols_at])
+        df_at = run(f"SELECT {col_sel} FROM dados {w_at} LIMIT 500")
+        st.markdown("##### Registros")
+        st.dataframe(df_at, use_container_width=True, hide_index=True)
     else:
-        w_base = f"{where_sql} AND" if where_sql.strip() else "WHERE"
-        atendentes = run(f'SELECT DISTINCT "{c_login}" FROM dados {w_base} "{c_login}" IS NOT NULL ORDER BY "{c_login}"')[c_login].tolist()
-
-        col_fat, col_funi = st.columns(2)
-        with col_fat:
-            at_sels = st.multiselect("Selecione um ou mais atendentes", atendentes)
-        with col_funi:
-            if c_unidade:
-                unidades_at = run(f'SELECT DISTINCT "{c_unidade}" FROM dados {w_base} "{c_unidade}" IS NOT NULL ORDER BY "{c_unidade}"')[c_unidade].tolist()
-                uni_sels = st.multiselect("Filtrar por unidade", unidades_at)
-            else:
-                uni_sels = []
-
-        if at_sels:
-            at_lista = ", ".join([f"'{esc(a)}'" for a in at_sels])
-            wheres_at = [f'"{c_login}" IN ({at_lista})']
-            if uni_sels and c_unidade:
-                uni_lista = ", ".join([f"'{esc(u)}'" for u in uni_sels])
-                wheres_at.append(f'"{c_unidade}" IN ({uni_lista})')
-            w_at = "WHERE " + " AND ".join(wheres_at)
-
-            a1, a2, a3 = st.columns(3)
-            tot_at = run_val(f"SELECT COUNT(*) FROM dados {w_at}")
-            cpf_at = run_val(f"SELECT COUNT(DISTINCT {chr(34)}{c_cpf}{chr(34)}) FROM dados {w_at}") if c_cpf else None
-            uni_at = run_val(f"SELECT COUNT(DISTINCT {chr(34)}{c_unidade}{chr(34)}) FROM dados {w_at}") if c_unidade else None
-            a1.metric("Total atendimentos", f"{tot_at:,}")
-            a2.metric("CPFs atendidos",     f"{cpf_at:,}" if cpf_at is not None else "—")
-            a3.metric("Unidades",           f"{uni_at:,}" if uni_at is not None else "—")
-
-            if len(at_sels) > 1:
-                st.markdown("##### Comparativo entre atendentes")
-                d_comp = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Total FROM dados {w_at} GROUP BY "{c_login}" ORDER BY Total DESC')
-                fig_comp = px.bar(d_comp, x="Atendente", y="Total", title="Total por atendente",
-                                  color="Atendente", text="Total")
-                fig_comp.update_layout(showlegend=False, xaxis_title=None)
-                fig_comp.update_traces(textposition="outside")
-                st.plotly_chart(fig_comp, use_container_width=True)
-
-            cl, cr = st.columns(2)
-            with cl:
-                if c_servico:
-                    d = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados {w_at} GROUP BY "{c_servico}" ORDER BY Qtd DESC LIMIT 10')
-                    fig_a1 = px.bar(d, x="Qtd", y="Servico", orientation="h", title="Serviços realizados (top 10)",
-                                    color="Qtd", color_continuous_scale="Teal", text="Qtd")
-                    fig_a1.update_layout(coloraxis_showscale=False, yaxis_title=None)
-                    fig_a1.update_traces(textposition="outside")
-                    st.plotly_chart(fig_a1, use_container_width=True)
-            with cr:
-                if c_unidade:
-                    d = run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Qtd FROM dados {w_at} GROUP BY "{c_unidade}"')
-                    fig_a2 = px.pie(d, names="Unidade", values="Qtd", title="Distribuição por unidade")
-                    st.plotly_chart(fig_a2, use_container_width=True)
-
-            cols_at = [c for c in [c_nome, c_cpf, c_login, c_servico, c_data, c_unidade] if c]
-            df_at = run(f'SELECT {", ".join([f"{chr(34)}{c}{chr(34)}" for c in cols_at])} FROM dados {w_at} LIMIT 500')
-            st.markdown("##### Cidadãos atendidos")
-            st.dataframe(df_at, use_container_width=True, hide_index=True)
+        st.info("Selecione ao menos um atendente ou uma unidade para ver os dados.")
 
 # ─────────────────────────────────────
 # ABA 4 — EXPORTAR
