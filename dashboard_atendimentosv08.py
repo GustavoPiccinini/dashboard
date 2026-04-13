@@ -115,16 +115,21 @@ def criar_conexao(filepath: str) -> duckdb.DuckDBPyConnection:
 def get_con() -> duckdb.DuckDBPyConnection:
     """Retorna conexão válida, recriando se necessário."""
     tmp_path = st.session_state.get("tmp_path")
+
     if not tmp_path:
         st.error("Faça upload do arquivo.")
         st.stop()
+
     con = st.session_state.get("con")
+
     try:
         if con:
-            con.execute("SELECT 1").fetchone()  # health check leve
+            con.execute("SELECT COUNT(*) FROM dados").fetchone()
             return con
     except Exception:
         pass
+
+    # Reconecta
     con = criar_conexao(tmp_path)
     st.session_state["con"] = con
     return con
@@ -138,20 +143,17 @@ def run_val(sql: str):
     return get_con().execute(sql).fetchone()[0]
 
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_colunas(_cache_key: str) -> list:
-    """Retorna lista de colunas disponíveis — executa só uma vez por arquivo."""
+def col_exists(col: str) -> bool:
     try:
-        df_cols = get_con().execute("SELECT * FROM dados LIMIT 0").df()
-        return list(df_cols.columns)
+        get_con().execute(f'SELECT "{col}" FROM dados LIMIT 1')
+        return True
     except Exception:
-        return []
+        return False
+
 
 def safe_col(key: str):
-    cache_key = st.session_state.get("last_file", "")
-    colunas = get_colunas(cache_key)
     c = COL.get(key, key)
-    return c if c in colunas else None
+    return c if col_exists(c) else None
 
 # ══════════════════════════════════════════════
 # AUTENTICAÇÃO
@@ -232,12 +234,8 @@ def altura_grafico(n_itens: int, min_h: int = 200, por_item: int = 40) -> int:
 def opts_db_cached(col, label_all, _cache_key):
     if not col:
         return [label_all]
-    try:
-        con = get_con()
-        vals = con.execute(f'SELECT DISTINCT "{col}" FROM dados WHERE "{col}" IS NOT NULL ORDER BY "{col}" LIMIT 500').df()[col].tolist()
-        return [label_all] + [str(v) for v in vals]
-    except Exception:
-        return [label_all]
+    vals = run(f'SELECT DISTINCT "{col}" FROM dados WHERE "{col}" IS NOT NULL ORDER BY "{col}" LIMIT 500')[col].tolist()
+    return [label_all] + [str(v) for v in vals]
 
 def opts_db(col, label_all):
     cache_key = st.session_state.get("last_file", "")
@@ -288,33 +286,32 @@ st.title("📋 Dashboard de Atendimentos")
 st.caption("Clique em qualquer linha para ver o perfil completo.")
 st.markdown("---")
 
-@st.cache_data(ttl=120, show_spinner=False)
-def calc_metricas(where: str, _ck: str):
-    """Calcula todas as métricas de uma vez — cache de 2 min."""
-    con = get_con()
-    def qv(sql):
-        try: return con.execute(sql).fetchone()[0]
-        except: return 0
-    tf   = qv(f"SELECT COUNT(*) FROM dados {where}")
-    cf   = qv(f'SELECT COUNT(DISTINCT "{c_cpf}") FROM dados {where}')     if c_cpf     else 0
-    uf   = qv(f'SELECT COUNT(DISTINCT "{c_unidade}") FROM dados {where}') if c_unidade else 0
-    sf   = qv(f'SELECT COUNT(DISTINCT "{c_servico}") FROM dados {where}') if c_servico else 0
-    lf   = qv(f'SELECT COUNT(DISTINCT "{c_login}") FROM dados {where}')   if c_login   else 0
-    taxa = 0
-    if c_cpf and cf > 0:
-        multi = qv(f'SELECT COUNT(*) FROM (SELECT "{c_cpf}" FROM dados {where} GROUP BY "{c_cpf}" HAVING COUNT(*) > 1)')
-        taxa = round(multi / cf * 100, 1)
-    delta = ""
-    if c_data:
-        ao = "AND" if where else "WHERE"
-        ma = qv(f'SELECT COUNT(*) FROM dados {where} {ao} CAST("{c_data}" AS DATE) >= DATE_TRUNC(\'month\', CURRENT_DATE)')
-        mp = qv(f'SELECT COUNT(*) FROM dados {where} {ao} CAST("{c_data}" AS DATE) >= DATE_TRUNC(\'month\', CURRENT_DATE) - INTERVAL 1 MONTH AND CAST("{c_data}" AS DATE) < DATE_TRUNC(\'month\', CURRENT_DATE)')
-        if mp > 0:
-            delta = f"{round(((ma-mp)/mp)*100,1):+.1f}% vs mês anterior"
-    return tf, cf, uf, sf, lf, taxa, delta
+total_f  = run_val(f"SELECT COUNT(*) FROM dados {where_sql}")
+cpfs_f   = run_val(f'SELECT COUNT(DISTINCT "{c_cpf}") FROM dados {where_sql}')     if c_cpf     else 0
+uni_f    = run_val(f'SELECT COUNT(DISTINCT "{c_unidade}") FROM dados {where_sql}') if c_unidade else 0
+svc_f    = run_val(f'SELECT COUNT(DISTINCT "{c_servico}") FROM dados {where_sql}') if c_servico else 0
+login_f  = run_val(f'SELECT COUNT(DISTINCT "{c_login}") FROM dados {where_sql}')   if c_login   else 0
 
-_ck = st.session_state.get("last_file", "")
-total_f, cpfs_f, uni_f, svc_f, login_f, taxa_retorno, delta_txt = calc_metricas(where_sql, _ck)
+# Taxa de retorno: CPFs com mais de 1 atendimento
+taxa_retorno = 0
+if c_cpf:
+    try:
+        cpfs_multi = run_val(f'SELECT COUNT(*) FROM (SELECT "{c_cpf}", COUNT(*) AS n FROM dados {where_sql} GROUP BY "{c_cpf}" HAVING n > 1)')
+        taxa_retorno = round((cpfs_multi / cpfs_f * 100), 1) if cpfs_f > 0 else 0
+    except Exception:
+        pass
+
+# Comparativo mês atual vs anterior
+delta_txt = ""
+if c_data:
+    try:
+        mes_atual = run_val(f'''SELECT COUNT(*) FROM dados {where_sql} {"AND" if where_sql else "WHERE"} CAST("{c_data}" AS DATE) >= DATE_TRUNC('month', CURRENT_DATE)''')
+        mes_ant   = run_val(f'''SELECT COUNT(*) FROM dados {where_sql} {"AND" if where_sql else "WHERE"} CAST("{c_data}" AS DATE) >= DATE_TRUNC('month', CURRENT_DATE) - INTERVAL 1 MONTH AND CAST("{c_data}" AS DATE) < DATE_TRUNC('month', CURRENT_DATE)''')
+        if mes_ant > 0:
+            delta_pct = round(((mes_atual - mes_ant) / mes_ant) * 100, 1)
+            delta_txt = f"{delta_pct:+.1f}% vs mês anterior"
+    except Exception:
+        pass
 
 m1, m2, m3, m4, m5, m6 = st.columns(6)
 m1.metric("Total atendimentos", f"{total_f:,}", delta_txt if delta_txt else None)
