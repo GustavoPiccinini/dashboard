@@ -441,72 +441,24 @@ with aba_graf:
         # Ranking clicável — Serviços e CPFs
         if c_servico and c_cpf:
             st.markdown("##### 🏆 Ranking — Serviços mais procurados")
-            st.caption("Clique em um serviço para ver os registros e o Top 10 CPFs daquele serviço.")
-
-            # Ranking muda conforme filtros ativos
-            top_svc = run(
-                "SELECT " + chr(34) + c_servico + chr(34) + " AS Servico, COUNT(*) AS Total, "
-                "COUNT(DISTINCT " + chr(34) + c_cpf + chr(34) + ") AS CPFs_unicos "
-                "FROM dados " + where_sql + " GROUP BY " + chr(34) + c_servico + chr(34) +
-                " ORDER BY Total DESC LIMIT 10"
-            )
+            top_svc = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Total, COUNT(DISTINCT "{c_cpf}") AS CPFs_unicos FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Total DESC LIMIT 10')
             ev_svc = st.dataframe(top_svc, use_container_width=True, hide_index=True,
                                   on_select="rerun", selection_mode="single-row")
             svc_sel_rows = ev_svc.selection.rows if hasattr(ev_svc, "selection") else []
-
-            # Serviço selecionado — filtra registros e Top 10 CPF por ele
-            svc_where = where_sql  # padrão: usa filtro geral
-            svc_nome_sel = None
             if svc_sel_rows:
-                svc_nome_sel = top_svc.iloc[svc_sel_rows[0]]["Servico"]
-                svc_safe = esc(svc_nome_sel)
-                and_or = "AND" if where_sql else "WHERE"
-                svc_where = where_sql + " " + and_or + " " + chr(34) + c_servico + chr(34) + " = '" + svc_safe + "'"
-
-                st.markdown(f"**Registros para: {svc_nome_sel}** — clique em uma linha para ver o perfil")
+                svc_nome = top_svc.iloc[svc_sel_rows[0]]["Servico"]
+                svc_safe = esc(svc_nome)
+                st.markdown(f"**Registros para: {svc_nome}**")
                 cols_svc = [c for c in [c_nome, c_cpf, c_unidade, c_data, c_login] if c]
-                df_svc = run(
-                    "SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_svc]) +
-                    " FROM dados " + svc_where + " LIMIT 200"
-                )
-                ev_svc2 = st.dataframe(df_svc, use_container_width=True, hide_index=True,
-                                       on_select="rerun", selection_mode="single-row")
-                svc2_rows = ev_svc2.selection.rows if hasattr(ev_svc2, "selection") else []
-                if svc2_rows and c_cpf:
-                    row_s = df_svc.iloc[svc2_rows[0]]
-                    cpf_s = esc(str(row_s.get(c_cpf, "")))
-                    nome_s = row_s.get(c_nome, "Cidadão")
-                    tot_s = run_val("SELECT COUNT(*) FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_s + "'")
-                    st.markdown("---")
-                    st.subheader(f"👤 Perfil: {nome_s}")
-                    ps1, ps2, ps3, ps4 = st.columns(4)
-                    ps1.metric("CPF", cpf_s)
-                    ps2.metric("NIS", str(row_s.get(c_nis, "—")))
-                    ps3.metric("Nascimento", str(row_s.get(c_nasc, "—")))
-                    ps4.metric("Atendimentos", f"{tot_s:,}")
-                    cols_hs = [c for c in [c_data, c_servico, c_unidade, c_quantia, c_login, c_categoria] if c]
-                    df_hs = run("SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_hs]) + " FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_s + "' ORDER BY " + chr(34) + str(c_data or "") + chr(34) + " DESC LIMIT 500")
-                    st.markdown("##### Histórico de serviços")
-                    st.dataframe(df_hs, use_container_width=True, hide_index=True)
+                and_or = "AND" if where_sql else "WHERE"
+                df_svc = run("SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_svc]) + " FROM dados " + where_sql + " " + and_or + " " + chr(34) + c_servico + chr(34) + " = '" + svc_safe + "' LIMIT 200")
+                st.dataframe(df_svc, use_container_width=True, hide_index=True)
 
-            # Top 10 CPFs — filtrado pelo serviço selecionado (ou geral)
-            lbl_top = f"##### 👤 Top 10 CPFs — {svc_nome_sel}" if svc_nome_sel else "##### 👤 Top 10 CPFs com mais atendimentos"
-            st.markdown(lbl_top)
+            st.markdown("##### 👤 Top 10 CPFs com mais atendimentos")
             if c_nome:
-                top_cpf = run(
-                    "SELECT " + chr(34) + c_nome + chr(34) + " AS Nome, " +
-                    chr(34) + c_cpf + chr(34) + " AS CPF, COUNT(*) AS Atendimentos "
-                    "FROM dados " + svc_where +
-                    " GROUP BY " + chr(34) + c_cpf + chr(34) + ", " + chr(34) + c_nome + chr(34) +
-                    " ORDER BY Atendimentos DESC LIMIT 10"
-                )
+                top_cpf = run(f'SELECT "{c_nome}" AS Nome, "{c_cpf}" AS CPF, COUNT(*) AS Atendimentos FROM dados {where_sql} GROUP BY "{c_cpf}", "{c_nome}" ORDER BY Atendimentos DESC LIMIT 10')
             else:
-                top_cpf = run(
-                    "SELECT " + chr(34) + c_cpf + chr(34) + " AS CPF, COUNT(*) AS Atendimentos "
-                    "FROM dados " + svc_where +
-                    " GROUP BY " + chr(34) + c_cpf + chr(34) +
-                    " ORDER BY Atendimentos DESC LIMIT 10"
-                )
+                top_cpf = run(f'SELECT "{c_cpf}" AS CPF, COUNT(*) AS Atendimentos FROM dados {where_sql} GROUP BY "{c_cpf}" ORDER BY Atendimentos DESC LIMIT 10')
             ev_cpf = st.dataframe(top_cpf, use_container_width=True, hide_index=True,
                                   on_select="rerun", selection_mode="single-row")
             cpf_sel_rows = ev_cpf.selection.rows if hasattr(ev_cpf, "selection") else []
@@ -515,18 +467,9 @@ with aba_graf:
                 cpf_safe = esc(str(cpf_click))
                 nome_click = top_cpf.iloc[cpf_sel_rows[0]].get("Nome", cpf_click)
                 total_click = run_val("SELECT COUNT(*) FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_safe + "'")
-                st.markdown("---")
-                st.subheader(f"👤 Perfil: {nome_click}")
-                pc1, pc2, pc3, pc4 = st.columns(4)
-                pc1.metric("CPF", cpf_safe)
-                pc2.metric("Atendimentos totais", f"{total_click:,}")
+                st.markdown(f"**Histórico: {nome_click} — {total_click:,} atendimentos**")
                 cols_h = [c for c in [c_data, c_servico, c_unidade, c_login, c_categoria] if c]
-                df_click = run(
-                    "SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_h]) +
-                    " FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_safe + "'"
-                    " ORDER BY " + chr(34) + str(c_data or "") + chr(34) + " DESC LIMIT 200"
-                )
-                st.markdown("##### Histórico de serviços")
+                df_click = run("SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_h]) + " FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_safe + "' ORDER BY " + chr(34) + str(c_data or "") + chr(34) + " DESC LIMIT 200")
                 st.dataframe(df_click, use_container_width=True, hide_index=True)
 
 # ─────────────────────────────────────
