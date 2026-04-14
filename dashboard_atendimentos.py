@@ -202,7 +202,20 @@ if uploaded:
 else:
     st.sidebar.info("💡 Faça upload do arquivo para começar.")
     st.title("📋 Dashboard de Atendimentos")
-    st.info("📂 Faça upload do seu arquivo CSV ou Excel na barra lateral.")
+    st.markdown("---")
+    c1, c2, c3 = st.columns(3)
+    c1.info("📂 **Passo 1** — Faça upload do arquivo CSV, Excel ou Parquet na barra lateral.")
+    c2.info("🔍 **Passo 2** — Use os filtros para selecionar período, unidade ou atendente.")
+    c3.info("📊 **Passo 3** — Navegue pelas abas para ver registros, gráficos e relatórios.")
+    st.markdown("---")
+    st.markdown("""
+    **O que você pode fazer neste dashboard:**
+    - 👤 Ver o histórico completo de atendimentos de qualquer cidadão (por CPF)
+    - 📊 Analisar serviços mais demandados por unidade e período
+    - 👥 Comparar produtividade entre atendentes e unidades
+    - 📥 Exportar qualquer recorte dos dados em Excel com resumos automáticos
+    - 🚨 Identificar alertas como cidadãos com alta frequência de atendimentos
+    """)
     st.stop()
 
 # ══════════════════════════════════════════════
@@ -259,7 +272,29 @@ if c_data:
         dmin = run(f'SELECT MIN(CAST("{c_data}" AS DATE)) FROM dados').iloc[0, 0]
         dmax = run(f'SELECT MAX(CAST("{c_data}" AS DATE)) FROM dados').iloc[0, 0]
         if dmin and dmax:
-            f_data = st.sidebar.date_input("Período", value=(dmin, dmax), min_value=dmin, max_value=dmax)
+            import datetime
+            hoje = datetime.date.today()
+            atalho = st.sidebar.selectbox("Período rápido", [
+                "Personalizado", "Este mês", "Mês anterior",
+                "Últimos 3 meses", "Últimos 6 meses", "Este ano", "Tudo"
+            ])
+            if atalho == "Este mês":
+                d0 = hoje.replace(day=1)
+                f_data = (d0, hoje)
+            elif atalho == "Mês anterior":
+                primeiro_mes = hoje.replace(day=1)
+                ultimo_ant = primeiro_mes - datetime.timedelta(days=1)
+                f_data = (ultimo_ant.replace(day=1), ultimo_ant)
+            elif atalho == "Últimos 3 meses":
+                f_data = (hoje - datetime.timedelta(days=90), hoje)
+            elif atalho == "Últimos 6 meses":
+                f_data = (hoje - datetime.timedelta(days=180), hoje)
+            elif atalho == "Este ano":
+                f_data = (hoje.replace(month=1, day=1), hoje)
+            elif atalho == "Tudo":
+                f_data = None
+            else:
+                f_data = st.sidebar.date_input("Período", value=(dmin, dmax), min_value=dmin, max_value=dmax)
     except Exception:
         pass
 
@@ -328,7 +363,115 @@ st.markdown("---")
 # ══════════════════════════════════════════════
 # ABAS
 # ══════════════════════════════════════════════
-aba_reg, aba_graf, aba_at, aba_exp = st.tabs(["📄 Registros", "📊 Gráficos", "👥 Atendentes", "📥 Exportar"])
+aba_resumo, aba_reg, aba_graf, aba_at, aba_exp = st.tabs(["🎯 Resumo", "📄 Registros", "📊 Gráficos", "👥 Atendentes", "📥 Exportar"])
+
+# ─────────────────────────────────────
+# ABA 0 — RESUMO EXECUTIVO
+# ─────────────────────────────────────
+with aba_resumo:
+    st.subheader("🎯 Resumo executivo")
+    st.caption("Visão geral para tomada de decisão rápida.")
+
+    # Linha 1 — métricas já calculadas
+    r1, r2, r3, r4, r5, r6 = st.columns(6)
+    r1.metric("Total atendimentos", f"{total_f:,}", delta_txt if delta_txt else None)
+    r2.metric("CPFs distintos",     f"{cpfs_f:,}")
+    r3.metric("Unidades ativas",    f"{uni_f:,}")
+    r4.metric("Tipos de serviço",   f"{svc_f:,}")
+    r5.metric("Atendentes ativos",  f"{login_f:,}")
+    r6.metric("Taxa de retorno",    f"{taxa_retorno}%", help="CPFs com mais de 1 atendimento")
+
+    st.markdown("---")
+
+    # Linha 2 — top serviço + top unidade
+    res1, res2 = st.columns(2)
+    with res1:
+        if c_servico:
+            st.markdown("##### 🏆 Top 5 serviços")
+            d_res_svc = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Total FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Total DESC LIMIT 5')
+            fig_res1 = px.bar(d_res_svc, x="Total", y="Servico", orientation="h",
+                              color="Total", color_continuous_scale="Teal", text="Total",
+                              height=altura_grafico(5))
+            fig_res1.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title=None, margin=dict(l=0,r=0,t=0,b=0))
+            fig_res1.update_traces(textposition="outside")
+            st.plotly_chart(fig_res1, use_container_width=True)
+    with res2:
+        if c_unidade:
+            st.markdown("##### 🏢 Atendimentos por unidade")
+            d_res_uni = run(f'SELECT "{c_unidade}" AS Unidade, COUNT(*) AS Total FROM dados {where_sql} GROUP BY "{c_unidade}" ORDER BY Total DESC')
+            fig_res2 = px.bar(d_res_uni, x="Total", y="Unidade", orientation="h",
+                              color="Total", color_continuous_scale="Purples", text="Total",
+                              height=altura_grafico(len(d_res_uni)))
+            fig_res2.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title=None, margin=dict(l=0,r=0,t=0,b=0))
+            fig_res2.update_traces(textposition="outside")
+            st.plotly_chart(fig_res2, use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("##### 🚨 Alertas")
+
+    alerta_cols = st.columns(3)
+
+    # Alerta 1: Cidadãos com muitos atendimentos (possível vulnerabilidade)
+    with alerta_cols[0]:
+        if c_cpf and c_nome:
+            try:
+                limite_alerta = 10
+                df_alerta1 = run(
+                    "SELECT " + chr(34) + c_nome + chr(34) + " AS Nome, " +
+                    chr(34) + c_cpf + chr(34) + " AS CPF, COUNT(*) AS Total " +
+                    "FROM dados " + where_sql +
+                    " GROUP BY " + chr(34) + c_cpf + chr(34) + ", " + chr(34) + c_nome + chr(34) +
+                    " HAVING COUNT(*) >= " + str(limite_alerta) +
+                    " ORDER BY Total DESC LIMIT 10"
+                )
+                if not df_alerta1.empty:
+                    st.warning(f"⚠️ **{len(df_alerta1)} cidadãos** com {limite_alerta}+ atendimentos")
+                    st.dataframe(df_alerta1, use_container_width=True, hide_index=True)
+                else:
+                    st.success(f"✅ Nenhum cidadão com {limite_alerta}+ atendimentos")
+            except Exception:
+                pass
+
+    # Alerta 2: Produtividade por atendente
+    with alerta_cols[1]:
+        if c_login:
+            try:
+                df_prod = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Total FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Total ASC LIMIT 5')
+                if not df_prod.empty:
+                    st.info("📉 **Atendentes com menor volume**")
+                    st.dataframe(df_prod, use_container_width=True, hide_index=True)
+            except Exception:
+                pass
+
+    # Alerta 3: Cidadãos sem retorno (só 1 atendimento)
+    with alerta_cols[2]:
+        if c_cpf:
+            try:
+                sem_retorno = run_val(
+                    "SELECT COUNT(*) FROM (SELECT " + chr(34) + c_cpf + chr(34) +
+                    " FROM dados " + where_sql +
+                    " GROUP BY " + chr(34) + c_cpf + chr(34) + " HAVING COUNT(*) = 1)"
+                )
+                pct = round(sem_retorno / cpfs_f * 100, 1) if cpfs_f > 0 else 0
+                st.info(f"🔍 **{sem_retorno:,} cidadãos** ({pct}%) com apenas 1 atendimento — candidatos à busca ativa")
+            except Exception:
+                pass
+
+    # Evolução mensal resumida
+    if c_data:
+        st.markdown("---")
+        st.markdown("##### 📈 Evolução mensal")
+        try:
+            w_data = f"{where_sql} AND" if where_sql.strip() else "WHERE"
+            d_ev = run(f'''SELECT STRFTIME(CAST("{c_data}" AS DATE), '%Y-%m') AS Mes, COUNT(*) AS Qtd FROM dados {w_data} "{c_data}" IS NOT NULL GROUP BY Mes ORDER BY Mes''')
+            if not d_ev.empty:
+                d_ev = d_ev.tail(12)
+                fig_ev = px.line(d_ev, x="Mes", y="Qtd", markers=True)
+                fig_ev.update_layout(xaxis_title="Mês", yaxis_title="Atendimentos", xaxis_tickangle=-45, height=250, margin=dict(t=0))
+                fig_ev.update_traces(line_color="#1f77b4", line_width=2)
+                st.plotly_chart(fig_ev, use_container_width=True)
+        except Exception:
+            st.caption("Evolução indisponível.")
 
 # ─────────────────────────────────────
 # ABA 1 — REGISTROS
@@ -605,6 +748,24 @@ with aba_at:
                     fig_h.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                     fig_h.update_traces(textposition="outside")
                     st.plotly_chart(fig_h, use_container_width=True)
+        # ── Exportar desta seleção ──
+        st.markdown("---")
+        st.markdown("##### 📥 Exportar dados desta seleção")
+        EXPORT_LIMIT_AT = 50_000
+        col_at_exp = [c for c in [c_nome, c_cpf, c_nis, c_nasc, c_login, c_servico, c_data, c_unidade, c_categoria] if c]
+        df_at_exp = run("SELECT " + ", ".join([chr(34)+c+chr(34) for c in col_at_exp]) + " FROM dados " + w_at + " LIMIT " + str(EXPORT_LIMIT_AT))
+        out_at = io.BytesIO()
+        with pd.ExcelWriter(out_at, engine="openpyxl") as writer:
+            df_at_exp.to_excel(writer, index=False, sheet_name="Atendimentos")
+            if c_login:
+                run("SELECT " + chr(34) + c_login + chr(34) + " AS Atendente, COUNT(*) AS Total FROM dados " + w_at + " GROUP BY " + chr(34) + c_login + chr(34) + " ORDER BY Total DESC").to_excel(writer, index=False, sheet_name="Por Atendente")
+            if c_servico:
+                run("SELECT " + chr(34) + c_servico + chr(34) + " AS Servico, COUNT(*) AS Total FROM dados " + w_at + " GROUP BY " + chr(34) + c_servico + chr(34) + " ORDER BY Total DESC").to_excel(writer, index=False, sheet_name="Por Serviço")
+            if c_unidade:
+                run("SELECT " + chr(34) + c_unidade + chr(34) + " AS Unidade, COUNT(*) AS Total FROM dados " + w_at + " GROUP BY " + chr(34) + c_unidade + chr(34) + " ORDER BY Total DESC").to_excel(writer, index=False, sheet_name="Por Unidade")
+        st.download_button("⬇️ Baixar Excel desta seleção", out_at.getvalue(), "atendimentos_selecao.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           use_container_width=True)
     else:
         st.info("Selecione ao menos um atendente ou uma unidade para ver os dados.")
 
