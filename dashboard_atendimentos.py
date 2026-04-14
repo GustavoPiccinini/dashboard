@@ -319,9 +319,9 @@ total_f, cpfs_f, uni_f, svc_f, login_f, taxa_retorno, delta_txt = calc_metricas(
 m1, m2, m3, m4, m5, m6 = st.columns(6)
 m1.metric("Total atendimentos", f"{total_f:,}", delta_txt if delta_txt else None)
 m2.metric("CPFs distintos",     f"{cpfs_f:,}")
-m3.metric("Unidades",    f"{uni_f:,}")
+m3.metric("Unidades ativas",    f"{uni_f:,}")
 m4.metric("Tipos de serviço",   f"{svc_f:,}")
-m5.metric("Atendentes",  f"{login_f:,}")
+m5.metric("Atendentes ativos",  f"{login_f:,}")
 m6.metric("Taxa de retorno",    f"{taxa_retorno}%", help="CPFs com mais de 1 atendimento")
 st.markdown("---")
 
@@ -586,16 +586,9 @@ with aba_at:
 
                 total_cpf_at = run_val("SELECT COUNT(*) FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_at_sel + "'")
                 pa, pb, pc, pd_ = st.columns(4)
-                cols_perfil_at = [c for c in [c_cpf, c_nis, c_nasc] if c]
-                df_perfil_at = get_con().execute(
-                    "SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_perfil_at]) +
-                    " FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_at_sel + "' LIMIT 1"
-                ).df()
-                nis_at  = str(df_perfil_at.iloc[0][c_nis])  if c_nis  and not df_perfil_at.empty else "—"
-                nasc_at = str(df_perfil_at.iloc[0][c_nasc]) if c_nasc and not df_perfil_at.empty else "—"
                 pa.metric("CPF",           cpf_at_sel)
-                pb.metric("NIS",           nis_at)
-                pc.metric("Nascimento",    nasc_at)
+                pb.metric("NIS",           str(row_at.get(c_nis,  "—")))
+                pc.metric("Nascimento",    str(row_at.get(c_nasc, "—")))
                 pd_.metric("Atendimentos", f"{total_cpf_at:,}")
 
                 cols_h = [c for c in [c_data, c_servico, c_unidade, c_quantia, c_login, c_categoria] if c]
@@ -612,32 +605,6 @@ with aba_at:
                     fig_h.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                     fig_h.update_traces(textposition="outside")
                     st.plotly_chart(fig_h, use_container_width=True)
-        # ── Exportar dados da seleção atual ──
-        st.markdown("---")
-        st.markdown("##### 📥 Exportar dados desta seleção")
-        EXPORT_LIMIT_AT = 50_000
-        st.caption(f"Exporta os registros do filtro atual (atendentes/unidades selecionados) — limite {EXPORT_LIMIT_AT:,} linhas.")
-
-        col_at_exp = [c for c in [c_nome, c_cpf, c_nis, c_nasc, c_login, c_servico, c_data, c_unidade, c_categoria] if c]
-        df_at_exp = run("SELECT " + ", ".join([chr(34)+c+chr(34) for c in col_at_exp]) + " FROM dados " + w_at + " LIMIT " + str(EXPORT_LIMIT_AT))
-
-        out_at = io.BytesIO()
-        with pd.ExcelWriter(out_at, engine="openpyxl") as writer:
-            df_at_exp.to_excel(writer, index=False, sheet_name="Atendimentos")
-            if c_login:
-                run("SELECT " + chr(34) + c_login + chr(34) + " AS Atendente, COUNT(*) AS Total FROM dados " + w_at + " GROUP BY " + chr(34) + c_login + chr(34) + " ORDER BY Total DESC").to_excel(writer, index=False, sheet_name="Por Atendente")
-            if c_servico:
-                run("SELECT " + chr(34) + c_servico + chr(34) + " AS Servico, COUNT(*) AS Total FROM dados " + w_at + " GROUP BY " + chr(34) + c_servico + chr(34) + " ORDER BY Total DESC").to_excel(writer, index=False, sheet_name="Por Serviço")
-            if c_unidade:
-                run("SELECT " + chr(34) + c_unidade + chr(34) + " AS Unidade, COUNT(*) AS Total FROM dados " + w_at + " GROUP BY " + chr(34) + c_unidade + chr(34) + " ORDER BY Total DESC").to_excel(writer, index=False, sheet_name="Por Unidade")
-
-        st.download_button(
-            "⬇️ Baixar Excel desta seleção",
-            out_at.getvalue(),
-            "atendimentos_selecao.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
-        )
     else:
         st.info("Selecione ao menos um atendente ou uma unidade para ver os dados.")
 
