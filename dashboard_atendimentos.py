@@ -605,6 +605,24 @@ with aba_at:
                     fig_h.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Quantidade")
                     fig_h.update_traces(textposition="outside")
                     st.plotly_chart(fig_h, use_container_width=True)
+        # ── Exportar desta seleção ──
+        st.markdown("---")
+        st.markdown("##### 📥 Exportar dados desta seleção")
+        EXPORT_LIMIT_AT = 50_000
+        col_at_exp = [c for c in [c_nome, c_cpf, c_nis, c_nasc, c_login, c_servico, c_data, c_unidade, c_categoria] if c]
+        df_at_exp = run("SELECT " + ", ".join([chr(34)+c+chr(34) for c in col_at_exp]) + " FROM dados " + w_at + " LIMIT " + str(EXPORT_LIMIT_AT))
+        out_at = io.BytesIO()
+        with pd.ExcelWriter(out_at, engine="openpyxl") as writer:
+            df_at_exp.to_excel(writer, index=False, sheet_name="Atendimentos")
+            if c_login:
+                run("SELECT " + chr(34) + c_login + chr(34) + " AS Atendente, COUNT(*) AS Total FROM dados " + w_at + " GROUP BY " + chr(34) + c_login + chr(34) + " ORDER BY Total DESC").to_excel(writer, index=False, sheet_name="Por Atendente")
+            if c_servico:
+                run("SELECT " + chr(34) + c_servico + chr(34) + " AS Servico, COUNT(*) AS Total FROM dados " + w_at + " GROUP BY " + chr(34) + c_servico + chr(34) + " ORDER BY Total DESC").to_excel(writer, index=False, sheet_name="Por Serviço")
+            if c_unidade:
+                run("SELECT " + chr(34) + c_unidade + chr(34) + " AS Unidade, COUNT(*) AS Total FROM dados " + w_at + " GROUP BY " + chr(34) + c_unidade + chr(34) + " ORDER BY Total DESC").to_excel(writer, index=False, sheet_name="Por Unidade")
+        st.download_button("⬇️ Baixar Excel desta seleção", out_at.getvalue(), "atendimentos_selecao.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           use_container_width=True)
     else:
         st.info("Selecione ao menos um atendente ou uma unidade para ver os dados.")
 
