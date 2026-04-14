@@ -319,9 +319,9 @@ total_f, cpfs_f, uni_f, svc_f, login_f, taxa_retorno, delta_txt = calc_metricas(
 m1, m2, m3, m4, m5, m6 = st.columns(6)
 m1.metric("Total atendimentos", f"{total_f:,}", delta_txt if delta_txt else None)
 m2.metric("CPFs distintos",     f"{cpfs_f:,}")
-m3.metric("Unidades ativas",    f"{uni_f:,}")
+m3.metric("Unidades",    f"{uni_f:,}")
 m4.metric("Tipos de serviço",   f"{svc_f:,}")
-m5.metric("Atendentes ativos",  f"{login_f:,}")
+m5.metric("Atendentes",  f"{login_f:,}")
 m6.metric("Taxa de retorno",    f"{taxa_retorno}%", help="CPFs com mais de 1 atendimento")
 st.markdown("---")
 
@@ -360,17 +360,9 @@ with aba_reg:
             st.subheader(f"👤 Perfil: {row.get(c_nome, 'Cidadão')}")
             total_cpf = run_val("SELECT COUNT(*) FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_sel + "'")
             pa, pb, pc, pd_ = st.columns(4)
-            # Busca dados completos do cidadão diretamente no banco
-            cols_perfil = [c for c in [c_cpf, c_nis, c_nasc] if c]
-            df_perfil = get_con().execute(
-                "SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_perfil]) +
-                " FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_sel + "' LIMIT 1"
-            ).df()
-            nis_val  = str(df_perfil.iloc[0][c_nis])  if c_nis  and not df_perfil.empty else "—"
-            nasc_val = str(df_perfil.iloc[0][c_nasc]) if c_nasc and not df_perfil.empty else "—"
             pa.metric("CPF",           cpf_sel)
-            pb.metric("NIS",           nis_val)
-            pc.metric("Nascimento",    nasc_val)
+            pb.metric("NIS",           str(row.get(c_nis,  "—")))
+            pc.metric("Nascimento",    str(row.get(c_nasc, "—")))
             pd_.metric("Atendimentos", total_cpf)
 
             cols_h = [c for c in [c_data, c_servico, c_unidade, c_quantia, c_login, c_categoria] if c]
