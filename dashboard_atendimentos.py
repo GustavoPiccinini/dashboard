@@ -328,10 +328,11 @@ st.markdown("---")
 # ══════════════════════════════════════════════
 # ABAS
 # ══════════════════════════════════════════════
-aba_reg, aba_graf, aba_at, aba_exp = st.tabs(["📄 Registros", "📊 Gráficos", "👥 Atendentes", "📥 Exportar"])
+aba_reg, aba_graf, aba_at, aba_alertas, aba_exp = st.tabs(["📄 Individuos", "📊 Gráficos", "👥 Atendentes", "🚨 Alertas", "📥 Exportar"])
+
 
 # ─────────────────────────────────────
-# ABA 1 — REGISTROS
+# ABA 1 — Individuos
 # ─────────────────────────────────────
 with aba_reg:
     st.subheader("Registros de atendimento")
@@ -627,7 +628,125 @@ with aba_at:
         st.info("Selecione ao menos um atendente ou uma unidade para ver os dados.")
 
 # ─────────────────────────────────────
-# ABA 4 — EXPORTAR
+# ABA 4 — ALERTAS
+# ─────────────────────────────────────
+with aba_alertas:
+    st.subheader("🚨 Alertas e indicadores")
+    st.caption("Indicadores automáticos para apoio à gestão.")
+
+    al1, al2 = st.columns(2)
+
+    # ── Alerta 1: Cidadãos com muitos atendimentos ──
+    with al1:
+        if c_cpf and c_nome:
+            st.markdown("##### ⚠️ Cidadãos com alta frequência")
+            limite = st.number_input("Mínimo de atendimentos", min_value=2, max_value=100, value=10, step=1, key="limite_alerta")
+            df_freq = run(
+                "SELECT " + chr(34) + c_nome + chr(34) + " AS Nome, " +
+                chr(34) + c_cpf + chr(34) + " AS CPF, COUNT(*) AS Total " +
+                "FROM dados " + where_sql +
+                " GROUP BY " + chr(34) + c_cpf + chr(34) + ", " + chr(34) + c_nome + chr(34) +
+                " HAVING COUNT(*) >= " + str(int(limite)) +
+                " ORDER BY Total DESC LIMIT 50"
+            )
+            if df_freq.empty:
+                st.success(f"✅ Nenhum cidadão com {int(limite)}+ atendimentos.")
+            else:
+                st.warning(f"{len(df_freq)} cidadão(s) com {int(limite)}+ atendimentos")
+                ev_freq = st.dataframe(df_freq, use_container_width=True, hide_index=True,
+                                       on_select="rerun", selection_mode="single-row")
+                sel_freq = ev_freq.selection.rows if hasattr(ev_freq, "selection") else []
+                if sel_freq and c_cpf:
+                    row_f = df_freq.iloc[sel_freq[0]]
+                    cpf_f = esc(str(row_f["CPF"]))
+                    st.markdown("---")
+                    st.subheader(f"👤 Perfil: {row_f['Nome']}")
+                    tot_f = run_val("SELECT COUNT(*) FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_f + "'")
+                    pfa, pfb, pfc, pfd = st.columns(4)
+                    pfa.metric("CPF", cpf_f)
+                    cols_pf = [c for c in [c_nis, c_nasc] if c]
+                    if cols_pf:
+                        df_pf = get_con().execute("SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_pf]) + " FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_f + "' LIMIT 1").df()
+                        pfb.metric("NIS",        str(df_pf.iloc[0][c_nis])  if c_nis  and not df_pf.empty else "—")
+                        pfc.metric("Nascimento", str(df_pf.iloc[0][c_nasc]) if c_nasc and not df_pf.empty else "—")
+                    pfd.metric("Atendimentos", f"{tot_f:,}")
+                    cols_hf = [c for c in [c_data, c_servico, c_unidade, c_login, c_categoria] if c]
+                    df_hf = run("SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_hf]) + " FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_f + "' ORDER BY " + chr(34) + str(c_data or "") + chr(34) + " DESC LIMIT 200")
+                    st.dataframe(df_hf, use_container_width=True, hide_index=True)
+
+    # ── Alerta 2: Ranking de atendentes (ajustável maior/menor) ──
+    with al2:
+        if c_login:
+            st.markdown("##### 👥 Ranking de atendentes")
+            ordem = st.radio("Ordenar por", ["Maior volume", "Menor volume"], horizontal=True, key="ordem_at")
+            ordem_sql = "DESC" if ordem == "Maior volume" else "ASC"
+            n_at = st.number_input("Quantidade", min_value=3, max_value=40, value=10, step=1, key="n_at")
+            try:
+                df_rank = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Total FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Total {ordem_sql} LIMIT {int(n_at)}')
+                fig_rank = px.bar(df_rank, x="Total", y="Atendente", orientation="h",
+                                  color="Total",
+                                  color_continuous_scale="Oranges" if ordem == "Maior volume" else "Reds",
+                                  text="Total", height=altura_grafico(len(df_rank)))
+                fig_rank.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Atendimentos")
+                fig_rank.update_traces(textposition="outside")
+                st.plotly_chart(fig_rank, use_container_width=True)
+
+                ev_rank = st.dataframe(df_rank, use_container_width=True, hide_index=True,
+                                       on_select="rerun", selection_mode="single-row")
+                sel_rank = ev_rank.selection.rows if hasattr(ev_rank, "selection") else []
+                if sel_rank:
+                    at_click = df_rank.iloc[sel_rank[0]]["Atendente"]
+                    at_safe = esc(str(at_click))
+                    w_atc = "WHERE " + chr(34) + c_login + chr(34) + " = '" + at_safe + "'"
+                    st.markdown(f"**Detalhes: {at_click}**")
+                    cols_atd = [c for c in [c_nome, c_cpf, c_servico, c_data, c_unidade] if c]
+                    df_atd = run("SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_atd]) + " FROM dados " + w_atc + " LIMIT 200")
+                    st.dataframe(df_atd, use_container_width=True, hide_index=True)
+            except Exception as e:
+                st.caption(f"Indisponível: {e}")
+
+    # ── Alerta 3: Cidadãos sem retorno ──
+    st.markdown("---")
+    st.markdown("##### 🔍 Cidadãos com apenas 1 atendimento (busca ativa)")
+    if c_cpf and c_nome:
+        try:
+            df_sem_ret = run(
+                "SELECT " + chr(34) + c_nome + chr(34) + " AS Nome, " +
+                chr(34) + c_cpf + chr(34) + " AS CPF, " +
+                "MIN(CAST(" + chr(34) + str(c_data or "") + chr(34) + " AS DATE)) AS Ultimo_atendimento " +
+                "FROM dados " + where_sql +
+                " GROUP BY " + chr(34) + c_cpf + chr(34) + ", " + chr(34) + c_nome + chr(34) +
+                " HAVING COUNT(*) = 1 ORDER BY Ultimo_atendimento ASC LIMIT 100"
+            )
+            if df_sem_ret.empty:
+                st.success("✅ Nenhum cidadão com apenas 1 atendimento.")
+            else:
+                st.info(f"{len(df_sem_ret)} cidadão(s) com apenas 1 atendimento — mostrando os 100 com atendimento mais antigo")
+                ev_sr = st.dataframe(df_sem_ret, use_container_width=True, hide_index=True,
+                                     on_select="rerun", selection_mode="single-row")
+                sel_sr = ev_sr.selection.rows if hasattr(ev_sr, "selection") else []
+                if sel_sr and c_cpf:
+                    row_sr = df_sem_ret.iloc[sel_sr[0]]
+                    cpf_sr = esc(str(row_sr["CPF"]))
+                    st.markdown("---")
+                    st.subheader(f"👤 Perfil: {row_sr['Nome']}")
+                    tot_sr = run_val("SELECT COUNT(*) FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_sr + "'")
+                    sa, sb, sc_, sd = st.columns(4)
+                    sa.metric("CPF", cpf_sr)
+                    cols_ps = [c for c in [c_nis, c_nasc] if c]
+                    if cols_ps:
+                        df_ps = get_con().execute("SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_ps]) + " FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_sr + "' LIMIT 1").df()
+                        sb.metric("NIS",        str(df_ps.iloc[0][c_nis])  if c_nis  and not df_ps.empty else "—")
+                        sc_.metric("Nascimento",str(df_ps.iloc[0][c_nasc]) if c_nasc and not df_ps.empty else "—")
+                    sd.metric("Atendimentos", tot_sr)
+                    cols_hs = [c for c in [c_data, c_servico, c_unidade, c_login] if c]
+                    df_hs = run("SELECT " + ", ".join([chr(34)+c+chr(34) for c in cols_hs]) + " FROM dados WHERE " + chr(34) + c_cpf + chr(34) + " = '" + cpf_sr + "' LIMIT 100")
+                    st.dataframe(df_hs, use_container_width=True, hide_index=True)
+        except Exception as e:
+            st.caption(f"Indisponível: {e}")
+
+# ─────────────────────────────────────
+# ABA 5 — EXPORTAR
 # ─────────────────────────────────────
 with aba_exp:
     st.subheader("Exportar dados filtrados")
