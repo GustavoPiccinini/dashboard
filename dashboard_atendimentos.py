@@ -678,14 +678,14 @@ with aba_alertas:
     with al2:
         if c_login:
             st.markdown("##### 👥 Ranking de atendentes")
-            ordem = st.radio("Ordenar por", ["Maior volume", "Menor volume"], horizontal=True, key="ordem_at")
-            ordem_sql = "DESC" if ordem == "Maior volume" else "ASC"
+            ordem = st.radio("Ordenar por", ["Mais atendimentos", "Menos atendimentos"], horizontal=True, key="ordem_at")
+            ordem_sql = "DESC" if ordem == "Mais atendimentos" else "ASC"
             n_at = st.number_input("Quantidade", min_value=3, max_value=40, value=10, step=1, key="n_at")
             try:
                 df_rank = run(f'SELECT "{c_login}" AS Atendente, COUNT(*) AS Total FROM dados {where_sql} GROUP BY "{c_login}" ORDER BY Total {ordem_sql} LIMIT {int(n_at)}')
                 fig_rank = px.bar(df_rank, x="Total", y="Atendente", orientation="h",
                                   color="Total",
-                                  color_continuous_scale="Oranges" if ordem == "Maior volume" else "Reds",
+                                  color_continuous_scale="Oranges" if ordem == "Mais atendimentos" else "Reds",
                                   text="Total", height=altura_grafico(len(df_rank)))
                 fig_rank.update_layout(coloraxis_showscale=False, yaxis_title=None, xaxis_title="Atendimentos")
                 fig_rank.update_traces(textposition="outside")
