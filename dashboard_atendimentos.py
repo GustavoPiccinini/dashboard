@@ -6,6 +6,7 @@ import duckdb
 import pandas as pd
 import plotly.express as px
 
+
 st.set_page_config(page_title="Dashboard de Atendimentos", page_icon="📋", layout="wide")
 
 st.markdown("""
@@ -392,7 +393,7 @@ with aba_graf:
         g1, g2 = st.columns(2)
         with g1:
             if c_servico:
-                d = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Qtd DESC')
+                d = run(f'SELECT "{c_servico}" AS Servico, COUNT(*) AS Qtd FROM dados {where_sql} GROUP BY "{c_servico}" ORDER BY Qtd DESC LIMIT 10')
                 fig1 = px.bar(d, x="Qtd", y="Servico", orientation="h", title="Por tipo de serviço",
                               color="Qtd", color_continuous_scale="Teal", text="Qtd",
                               height=altura_grafico(len(d)))
